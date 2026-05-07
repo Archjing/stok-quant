@@ -1,0 +1,11 @@
+{
+  "continue.models": [
+    {
+      "name": "Qwen3-8B-q4",
+      "type": "openai",
+      "baseURL": "http://localhost:8687",
+      "apiPath": "/v1/chat/completions",
+      "model": "qwen3-8b-q4_k_m.gguf"
+    }
+  ]
+}

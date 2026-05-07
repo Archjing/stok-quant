@@ -12,7 +12,7 @@ echo Installing dependencies...
 call npm install
 
 echo.
-echo Starting frontend on http://localhost:5173
+echo Starting frontend on http://localhost:5174
 echo.
 npm run dev
 
