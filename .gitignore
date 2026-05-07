@@ -57,3 +57,6 @@ _pid.txt
 _be.log
 _scan.txt
 _issues.txt
+
+# Dev tools (not project source code)
+devtools/
