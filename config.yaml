@@ -1,0 +1,54 @@
+app:
+  name: "US Stock Quant System"
+  version: "1.0.0"
+  debug: true
+
+database:
+  type: "sqlite"
+  path: "data/us_stocks.db"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+
+crawler:
+  data_source: "yfinance"
+  sources:
+    yfinance:
+      enabled: true
+      timeout: 30
+      max_retries: 3
+    alpaca:
+      enabled: false
+      api_key: ""
+      secret_key: ""
+      base_url: "https://paper-api.alpaca.markets"
+    polygon:
+      enabled: false
+      api_key: ""
+
+backtest:
+  default_commission: 0.001
+  default_slippage: 0.0005
+  default_initial_cash: 100000.0
+  benchmark: "^GSPC"
+
+analysis:
+  default_indicators:
+    - sma_20
+    - sma_50
+    - sma_200
+    - ema_12
+    - ema_26
+    - macd
+    - rsi_14
+    - bollinger_20
+  default_filters:
+    market_cap: { min: 1000000000 }
+    price: { min: 5.0 }
+    volume: { min: 100000 }
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
