@@ -60,3 +60,13 @@ def trigger_update():
 
     threading.Thread(target=_run, daemon=True).start()
     return {"message": "增量更新已启动"}
+
+
+@router.post("/refresh-prices")
+def refresh_prices():
+    """立即刷新所有股票实时价格"""
+    try:
+        count = _manager.refresh_stock_prices()
+        return {"message": f"价格已刷新", "count": count}
+    except Exception as e:
+        raise HTTPException(500, f"刷新失败: {e}")

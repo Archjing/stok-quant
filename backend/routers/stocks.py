@@ -22,8 +22,8 @@ def list_stocks(
     offset: int = Query(0, ge=0),
     sector: Optional[str] = None,
 ):
-    """获取美股列表"""
-    stocks = data_source.get_stock_list()
+    """获取美股列表（自动缓存，5 分钟过期后自动刷新价格）"""
+    stocks = data_mgr.get_stock_list()
     if sector:
         stocks = [s for s in stocks if s.get("sector") == sector]
     total = len(stocks)
