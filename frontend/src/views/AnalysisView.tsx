@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Activity } from 'lucide-react'
 import { getStockDaily } from '../api'
 
 const ALL_SYMBOLS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY"]
