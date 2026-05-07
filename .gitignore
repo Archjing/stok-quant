@@ -51,3 +51,9 @@ out/
 # Config overrides
 config.local.yaml
 config.dev.yaml
+
+# Temp / runtime artifacts
+_pid.txt
+_be.log
+_scan.txt
+_issues.txt
