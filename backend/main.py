@@ -1,4 +1,4 @@
-             """
+"""
 US Stock Quant System - FastAPI 主程序
 美股量化分析 + 回测系统
 """
@@ -19,7 +19,7 @@ os.chdir(_project_root)
 
 from backend.config import get_settings
 from backend.database import init_db
-from backend.routers import stocks, backtest
+from backend.routers import stocks, backtest, data_sync
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +54,7 @@ app.add_middleware(
 
 app.include_router(stocks.router)
 app.include_router(backtest.router)
+app.include_router(data_sync.router)
 
 
 @app.get("/")

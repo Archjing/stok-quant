@@ -1,4 +1,4 @@
-                        """
+"""
 回测绩效指标计算
 """
 import numpy as np

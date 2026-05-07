@@ -1,4 +1,4 @@
-                                                                                                                            """
+"""
 美股数据源 - 基于 yfinance
 支持 US stock data: quotes, history, fundamentals, sectors
 """
@@ -15,18 +15,14 @@ logger = logging.getLogger(__name__)
 
 # ---- SP500 + NASDAQ + NYSE 常用股票列表 ----
 MAJOR_US_STOCKS = [
-    # S&P 500 头部
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "BRK-B", "TSLA",
     "JPM", "V", "UNH", "XOM", "PG", "JNJ", "MA", "HD", "CVX", "MRK",
     "ABBV", "BAC", "PEP", "KO", "COST", "WMT", "ADBE", "CRM", "NFLX",
     "CMCSA", "AVGO", "TMO", "ACN", "DHR", "NEE", "ABT", "DIS", "LIN",
     "TXN", "VZ", "PM", "IBM", "QCOM", "AMD", "INTC", "PYPL", "BA",
     "GE", "CAT", "GS", "MS", "C", "WFC", "SPY", "QQQ", "DIA", "IWM",
-    # 中概股
     "BABA", "JD", "PDD", "BIDU", "NIO", "LI", "XPEV", "TCOM",
-    # ETF
     "VTI", "VOO", "IVV", "VEA", "VWO", "BND", "AGG", "GLD", "SLV",
-    # 热门
     "TSM", "ASML", "SAP", "NVS", "NVO", "TM", "SONY", "UL", "RY",
 ]
 
@@ -48,6 +44,39 @@ SECTOR_MAP = {
     "GS": "Financial Services", "MS": "Financial Services", "C": "Financial Services",
 }
 
+STOCK_NAMES = {
+    "AAPL": "Apple Inc.", "MSFT": "Microsoft Corporation", "GOOGL": "Alphabet Inc.",
+    "AMZN": "Amazon.com Inc.", "NVDA": "NVIDIA Corporation", "META": "Meta Platforms Inc.",
+    "BRK-B": "Berkshire Hathaway Inc.", "TSLA": "Tesla Inc.", "JPM": "JPMorgan Chase & Co.",
+    "V": "Visa Inc.", "UNH": "UnitedHealth Group Inc.", "XOM": "Exxon Mobil Corporation",
+    "PG": "Procter & Gamble Co.", "JNJ": "Johnson & Johnson", "MA": "Mastercard Inc.",
+    "HD": "The Home Depot Inc.", "CVX": "Chevron Corporation", "MRK": "Merck & Co. Inc.",
+    "ABBV": "AbbVie Inc.", "BAC": "Bank of America Corporation", "PEP": "PepsiCo Inc.",
+    "KO": "The Coca-Cola Company", "COST": "Costco Wholesale Corporation", "WMT": "Walmart Inc.",
+    "ADBE": "Adobe Inc.", "CRM": "Salesforce Inc.", "NFLX": "Netflix Inc.",
+    "CMCSA": "Comcast Corporation", "AVGO": "Broadcom Inc.", "TMO": "Thermo Fisher Scientific Inc.",
+    "ACN": "Accenture plc", "DHR": "Danaher Corporation", "NEE": "NextEra Energy Inc.",
+    "ABT": "Abbott Laboratories", "DIS": "The Walt Disney Company", "LIN": "Linde plc",
+    "TXN": "Texas Instruments Inc.", "VZ": "Verizon Communications Inc.", "PM": "Philip Morris International Inc.",
+    "IBM": "International Business Machines Corporation", "QCOM": "QUALCOMM Inc.",
+    "AMD": "Advanced Micro Devices Inc.", "INTC": "Intel Corporation", "PYPL": "PayPal Holdings Inc.",
+    "BA": "The Boeing Company", "GE": "General Electric Company", "CAT": "Caterpillar Inc.",
+    "GS": "Goldman Sachs Group Inc.", "MS": "Morgan Stanley", "C": "Citigroup Inc.",
+    "WFC": "Wells Fargo & Company", "SPY": "SPDR S&P 500 ETF Trust", "QQQ": "Invesco QQQ Trust",
+    "DIA": "SPDR Dow Jones Industrial Average ETF", "IWM": "iShares Russell 2000 ETF",
+    "BABA": "Alibaba Group Holding Ltd.", "JD": "JD.com Inc.", "PDD": "PDD Holdings Inc.",
+    "BIDU": "Baidu Inc.", "NIO": "NIO Inc.", "LI": "Li Auto Inc.", "XPEV": "XPeng Inc.",
+    "TCOM": "Trip.com Group Ltd.", "VTI": "Vanguard Total Stock Market ETF",
+    "VOO": "Vanguard S&P 500 ETF", "IVV": "iShares Core S&P 500 ETF",
+    "VEA": "Vanguard FTSE Developed Markets ETF", "VWO": "Vanguard FTSE Emerging Markets ETF",
+    "BND": "Vanguard Total Bond Market ETF", "AGG": "iShares Core US Aggregate Bond ETF",
+    "GLD": "SPDR Gold Trust", "SLV": "iShares Silver Trust",
+    "TSM": "Taiwan Semiconductor Manufacturing Co. Ltd.", "ASML": "ASML Holding N.V.",
+    "SAP": "SAP SE", "NVS": "Novartis AG", "NVO": "Novo Nordisk A/S",
+    "TM": "Toyota Motor Corporation", "SONY": "Sony Group Corporation", "UL": "Unilever PLC",
+    "RY": "Royal Bank of Canada",
+}
+
 
 class USStockSource:
     """美国股票数据源 (yfinance)"""
@@ -64,20 +93,45 @@ class USStockSource:
         time.sleep(random.uniform(self._delay_min, self._delay_max))
 
     def get_stock_list(self) -> List[Dict[str, Any]]:
-        """获取美股列表（含基本信息）"""
+        """获取美股列表（含实时价格，批量 yfinance 请求）"""
+        # 批量获取实时价格：一次 API 调用获取所有股票
+        prices = {}
+        try:
+            # period="1d" 只拉今日数据，interval="1m" 太频会被限，用 "1d" 最轻量
+            batch = yf.download(
+                tickers=" ".join(MAJOR_US_STOCKS),
+                period="1d",
+                progress=False,
+                auto_adjust=True,
+            )
+            if not batch.empty and "Close" in batch.columns:
+                # batch 的列是 MultiIndex，如 ('Close', 'AAPL')
+                last = batch.iloc[-1]
+                for sym in MAJOR_US_STOCKS:
+                    try:
+                        val = last["Close"][sym]
+                        if val and not pd.isna(val):
+                            prices[sym] = float(val)
+                    except (KeyError, TypeError):
+                        pass
+        except Exception as e:
+            logger.warning(f"批量获取行情失败，将显示静态数据: {e}")
+
         stocks = []
-        for i, symbol in enumerate(MAJOR_US_STOCKS):
-            try:
-                info = self.get_stock_info(symbol)
-                if info:
-                    stocks.append(info)
-                self._random_delay()
-                if (i + 1) % 20 == 0:
-                    logger.info(f"已获取 {i+1}/{len(MAJOR_US_STOCKS)} 只股票信息")
-            except Exception as e:
-                logger.warning(f"获取 {symbol} 信息失败: {e}")
-                continue
-        logger.info(f"共获取 {len(stocks)} 只美股信息")
+        for symbol in MAJOR_US_STOCKS:
+            stocks.append({
+                "symbol": symbol,
+                "name": STOCK_NAMES.get(symbol, ""),
+                "exchange": "NASDAQ" if symbol in {
+                    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+                    "ADBE", "AMD", "INTC", "NFLX", "PYPL", "BIDU", "PDD",
+                } else "NYSE",
+                "sector": SECTOR_MAP.get(symbol),
+                "price": prices.get(symbol),
+                "change_pct": None,      # 后续可按需扩展
+                "market_cap": None,
+                "pe_ratio": None,
+            })
         return stocks
 
     def get_stock_info(self, symbol: str) -> Optional[Dict[str, Any]]:

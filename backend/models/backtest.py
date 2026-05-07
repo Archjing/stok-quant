@@ -1,4 +1,4 @@
-                                         """
+"""
 回测结果数据模型
 """
 from datetime import datetime, date

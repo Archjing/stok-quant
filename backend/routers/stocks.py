@@ -3,15 +3,17 @@
 """
 import logging
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from fastapi import APIRouter, Query, HTTPException
 
 from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS
 from backend.crawlers.data_cleaner import USDataCleaner
+from backend.data_manager import DataManager
 
 router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 logger = logging.getLogger(__name__)
 data_source = USStockSource()
+data_mgr = DataManager(request_delay=0.6)
 
 
 @router.get("/")
@@ -50,8 +52,38 @@ def get_stock_daily(
     years: int = Query(5, ge=1, le=30),
     indicators: bool = Query(False),
 ):
-    """获取日线数据"""
-    df = data_source.get_full_history(symbol.upper(), years=years)
+    """获取日线数据（优先从数据库缓存读取，不足时实时从 yfinance 获取）"""
+    sym = symbol.upper()
+
+    # 1) 尝试从数据库读取
+    db_rows = data_mgr.get_daily_from_db(sym, years=years)
+    if db_rows:
+        return {
+            "symbol": sym,
+            "total": len(db_rows),
+            "start_date": str(db_rows[0].date),
+            "end_date": str(db_rows[-1].date),
+            "source": "db",
+            "data": [
+                {
+                    "date": str(r.date),
+                    "open": r.open, "high": r.high, "low": r.low,
+                    "close": r.close, "volume": r.volume,
+                    "adjusted_close": r.adjusted_close,
+                    "sma_20": r.sma_20, "sma_50": r.sma_50, "sma_200": r.sma_200,
+                    "ema_12": r.ema_12, "ema_26": r.ema_26,
+                    "macd": r.macd, "macd_signal": r.macd_signal, "macd_hist": r.macd_hist,
+                    "rsi_14": r.rsi_14,
+                    "bb_upper": r.bb_upper, "bb_middle": r.bb_middle, "bb_lower": r.bb_lower,
+                    "atr_14": r.atr_14, "volume_sma_20": r.volume_sma_20,
+                }
+                for r in db_rows
+            ],
+        }
+
+    # 2) 数据库无数据，fallback 到 yfinance
+    logger.info(f"{sym} 数据库无缓存，从 yfinance 实时获取")
+    df = data_source.get_full_history(sym, years=years)
     if df.empty:
         raise HTTPException(404, f"股票 {symbol} 无日线数据")
 
@@ -60,10 +92,11 @@ def get_stock_daily(
         df = USDataCleaner.add_technical_indicators(df)
 
     return {
-        "symbol": symbol.upper(),
+        "symbol": sym,
         "total": len(df),
         "start_date": str(df["date"].iloc[0]) if "date" in df.columns else None,
         "end_date": str(df["date"].iloc[-1]) if "date" in df.columns else None,
+        "source": "yfinance",
         "data": df.fillna("").to_dict(orient="records"),
     }
 

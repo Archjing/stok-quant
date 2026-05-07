@@ -1,4 +1,4 @@
-                                                                                """
+"""
 回测引擎核心 - 事件驱动回测框架
 """
 import logging
@@ -101,6 +101,7 @@ class BacktestResult:
     calmar_ratio: float = 0.0
     max_drawdown: float = 0.0
     max_drawdown_pct: float = 0.0
+    max_drawdown_duration: int = 0
     win_rate: float = 0.0
     profit_factor: float = 0.0
     equity_curve: List[float] = field(default_factory=list)

@@ -9,7 +9,7 @@ database:
 
 server:
   host: "0.0.0.0"
-  port: 8000
+  port: 8777
   reload: true
 
 crawler:
@@ -48,6 +48,10 @@ analysis:
     market_cap: { min: 1000000000 }
     price: { min: 5.0 }
     volume: { min: 100000 }
+
+data_sync:
+  history_years: 10        # 首次批量下载时的历史年数
+  request_delay: 0.6       # 每只股票请求间隔（秒），降低 yfinance 限流风险
 
 logging:
   level: "INFO"

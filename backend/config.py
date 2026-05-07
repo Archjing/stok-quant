@@ -1,4 +1,4 @@
-                 """
+"""
 配置模块
 """
 import os
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     db_type: str = "sqlite"
     db_path: str = str(BASE_DIR / "data" / "us_stocks.db")
     server_host: str = "0.0.0.0"
-    server_port: int = 8000
+    server_port: int = 8777
 
     class Config:
         env_file = ".env"
@@ -46,7 +46,7 @@ def get_settings() -> Settings:
         db_type=db_config.get("type", "sqlite"),
         db_path=db_config.get("path", str(BASE_DIR / "data" / "us_stocks.db")),
         server_host=server_config.get("host", "0.0.0.0"),
-        server_port=server_config.get("port", 8000),
+        server_port=server_config.get("port", 8777),
     )
 
 

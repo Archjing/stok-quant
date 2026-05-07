@@ -1,4 +1,4 @@
-               """
+"""
 美股数据模型
 """
 from datetime import datetime

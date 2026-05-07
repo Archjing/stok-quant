@@ -1,4 +1,4 @@
-            """
+"""
 策略基类与内置策略
 """
 from typing import Optional

@@ -14,7 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8777:8777"
     volumes:
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml
