@@ -31,11 +31,11 @@ function App() {
       {/* Sidebar - Obsidian style */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-title">
-            <LineChart size={18} />
+          <div className="sidebar-title" style={{ fontSize: 28, gap: 10 }}>
+            <LineChart size={32} />
             {t('app.title')}
           </div>
-          <div className="sidebar-subtitle">{t('app.subtitle')}</div>
+          <div className="sidebar-subtitle" style={{ fontSize: 14 }}>{t('app.subtitle')}</div>
         </div>
 
         <nav className="sidebar-nav">

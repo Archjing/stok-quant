@@ -87,6 +87,21 @@ export default {
     tag: '标签',
     runBacktestPrompt: '运行回测',
     runBacktestPromptDesc: '选择股票代码和策略，然后点击"运行回测"查看结果',
+    // Filter
+    stockFilter: '选股筛选',
+    strategyControl: '策略控制',
+    allStocks: '全部股票',
+    bySector: '按板块',
+    byExchange: '按交易所',
+    byMarketCap: '按市值',
+    byIndex: '按指数',
+    custom: '自定义',
+    selectSector: '选择板块',
+    selectExchange: '选择交易所',
+    selectTop: '选择Top',
+    selectIndex: '选择指数',
+    customPlaceholder: 'AAPL,MSFT,GOOGL',
+    stocks: '只股票',
   },
   strategies: {
     title: '策略',
@@ -110,5 +125,6 @@ export default {
   },
   common: {
     loading: '加载中...',
+    applyFilter: '筛选',
   },
 }

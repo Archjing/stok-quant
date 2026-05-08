@@ -2,11 +2,11 @@
 美股数据 API
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timedelta, date
 from fastapi import APIRouter, Query, HTTPException
 
-from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS
+from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, SECTOR_MAP
 from backend.crawlers.data_cleaner import USDataCleaner
 from backend.data_manager import DataManager
 
@@ -15,20 +15,88 @@ logger = logging.getLogger(__name__)
 data_source = USStockSource()
 data_mgr = DataManager(request_delay=0.6)
 
+# 指数成分映射
+INDEX_CONSTITUENTS = {
+    "SPY": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "BRK-B", "TSLA",
+            "JPM", "V", "UNH", "XOM", "PG", "JNJ", "MA", "HD", "CVX", "MRK",
+            "ABBV", "BAC", "PEP", "KO", "COST", "WMT", "ADBE", "CRM", "NFLX",
+            "CMCSA", "AVGO", "TMO", "ACN", "DHR", "NEE", "ABT", "DIS", "LIN"],
+    "QQQ": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "ADBE",
+            "AMD", "NFLX", "PYPL", "INTC", "QCOM", "TXN", "AVGO", "CMCSA"],
+    "DIA": ["AAPL", "MSFT", "UNH", "V", "JPM", "JNJ", "WMT", "PG", "HD", "CVX",
+            "MMM", "AXP", "BA", "CAT", "CSCO", "KO", "C", "DIS", "XOM", "GS",
+            "HD", "IBM", "INTC", "JNJ", "JPM", "MCD", "MRK", "MSFT", "NKE", "PFE"],
+}
+
+# 交易所映射
+EXCHANGE_MAP = {
+    "NASDAQ": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "ADBE",
+               "AMD", "INTC", "NFLX", "PYPL", "BIDU", "PDD", "AVGO", "CMCSA",
+               "TXN", "QCOM", "BKNG", "ISRG", "GILD", "ADSK", "NTES"],
+    "NYSE": ["BRK-B", "JPM", "V", "UNH", "XOM", "PG", "JNJ", "MA", "HD", "CVX",
+             "MRK", "ABBV", "BAC", "PEP", "KO", "COST", "WMT", "CRM", "TMO",
+             "ACN", "DHR", "NEE", "ABT", "DIS", "LIN", "VZ", "PM", "IBM"],
+}
+
+
+@router.get("/filters")
+def get_filter_options():
+    """获取筛选选项"""
+    # 获取所有板块
+    sectors = list(set(SECTOR_MAP.values()))
+    sectors = [s for s in sectors if s]
+    sectors.sort()
+    
+    # 获取所有交易所
+    exchanges = list(EXCHANGE_MAP.keys())
+    
+    # 获取指数列表
+    indices = list(INDEX_CONSTITUENTS.keys())
+    
+    return {
+        "sectors": sectors,
+        "exchanges": exchanges,
+        "indices": indices,
+        "market_cap_options": [10, 20, 30, 50, 100],
+    }
+
 
 @router.get("/")
 def list_stocks(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    sector: Optional[str] = None,
+    filter_type: Optional[str] = Query(None, description="筛选类型: sector|exchange|market_cap|index|custom"),
+    filter_value: Optional[str] = Query(None, description="筛选值"),
 ):
-    """获取美股列表（自动缓存，5 分钟过期后自动刷新价格）"""
+    """获取美股列表（支持多种筛选方式）"""
     stocks = data_mgr.get_stock_list()
-    if sector:
-        stocks = [s for s in stocks if s.get("sector") == sector]
+    
+    # 应用筛选
+    if filter_type and filter_value:
+        if filter_type == "sector":
+            stocks = [s for s in stocks if s.get("sector") == filter_value]
+        elif filter_type == "exchange":
+            # 从交易所映射获取该交易所的股票
+            exchange_stocks = EXCHANGE_MAP.get(filter_value, [])
+            stocks = [s for s in stocks if s["symbol"] in exchange_stocks]
+        elif filter_type == "market_cap":
+            # 按市值排序取前N
+            limit_n = int(filter_value)
+            stocks_with_cap = [s for s in stocks if s.get("market_cap")]
+            stocks_with_cap.sort(key=lambda x: x.get("market_cap", 0), reverse=True)
+            stocks = stocks_with_cap[:limit_n]
+        elif filter_type == "index":
+            # 按指数成分筛选
+            index_stocks = INDEX_CONSTITUENTS.get(filter_value, [])
+            stocks = [s for s in stocks if s["symbol"] in index_stocks]
+        elif filter_type == "custom":
+            # 自定义符号列表（逗号分隔）
+            custom_symbols = [s.strip().upper() for s in filter_value.split(",")]
+            stocks = [s for s in stocks if s["symbol"] in custom_symbols]
+    
     total = len(stocks)
     page = stocks[offset:offset + limit]
-    return {"total": total, "data": page}
+    return {"total": total, "data": page, "filter_type": filter_type, "filter_value": filter_value}
 
 
 @router.get("/symbols")

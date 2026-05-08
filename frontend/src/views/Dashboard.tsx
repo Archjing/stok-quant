@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, TrendingUp, DollarSign, Activity } from 'lucide-react'
 import { getSymbols, listStrategies } from '../api'
 
 export default function Dashboard() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [stats, setStats] = useState({ stocks: 0, strategies: 0, lastUpdate: '' })
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export default function Dashboard() {
             <a
               key={item.title}
               href={item.path}
+              onClick={e => { e.preventDefault(); navigate(item.path) }}
               style={{
                 display: 'block',
                 padding: 16,
@@ -67,10 +70,6 @@ export default function Dashboard() {
                 textDecoration: 'none',
                 color: 'var(--text-primary)',
                 transition: 'border-color 150ms',
-              }}
-              onClick={e => {
-                e.preventDefault()
-                window.location.hash = item.path
               }}
             >
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{item.title}</div>

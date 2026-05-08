@@ -28,6 +28,7 @@
   --warning: #f9e2af;
   --danger: #f38ba8;
   --info: #89dceb;
+  --selected: #E9ECFC;
   
   /* 布局 */
   --sidebar-width: 260px;
@@ -229,6 +230,8 @@ a:hover { color: var(--accent-hover); }
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .stat-label {
@@ -240,9 +243,11 @@ a:hover { color: var(--accent-hover); }
 }
 
 .stat-value {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.2;
+  word-break: break-all;
 }
 
 .stat-value.positive { color: var(--success); }
@@ -267,6 +272,23 @@ a:hover { color: var(--accent-hover); }
 .table-scroll {
   overflow-y: auto;
   max-height: calc(100vh - 200px);
+}
+
+.table-card {
+  .table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+}
+
+.data-table {
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg-surface);
+  }
 }
 
 .data-table {

@@ -81,7 +81,7 @@ export default function AnalysisView() {
             </div>
             <div className="stat-card">
               <div className="stat-label">{t('stocks.volume')}</div>
-              <div className="stat-value" style={{ fontSize: 16 }}>
+              <div className="stat-value">
                 {latest.volume ? `${(latest.volume / 1e6).toFixed(1)}M` : '-'}
               </div>
             </div>
@@ -99,8 +99,7 @@ export default function AnalysisView() {
               {indicators.map(ind => (
                 <div key={ind.label} className="stat-card" style={{ padding: 12 }}>
                   <div className="stat-label">{ind.label}</div>
-                  <div className={`stat-value ${ind.value && ind.warn?.(ind.value) ? 'negative' : ''}`}
-                    style={{ fontSize: 16 }}>
+                  <div className={`stat-value ${ind.value && ind.warn?.(ind.value) ? 'negative' : ''}`}>
                     {ind.value != null
                       ? (ind.fmt ? ind.fmt(ind.value) : ind.value.toFixed(2))
                       : '-'}

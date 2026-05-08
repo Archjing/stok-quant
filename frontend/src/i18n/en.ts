@@ -87,6 +87,21 @@ export default {
     tag: 'Tag',
     runBacktestPrompt: 'Run a backtest',
     runBacktestPromptDesc: 'Select a symbol and strategy, then click "Run Backtest" to see results',
+    // Filter
+    stockFilter: 'Stock Filter',
+    strategyControl: 'Strategy Control',
+    allStocks: 'All Stocks',
+    bySector: 'By Sector',
+    byExchange: 'By Exchange',
+    byMarketCap: 'By Market Cap',
+    byIndex: 'By Index',
+    custom: 'Custom',
+    selectSector: 'Select Sector',
+    selectExchange: 'Select Exchange',
+    selectTop: 'Select Top',
+    selectIndex: 'Select Index',
+    customPlaceholder: 'AAPL,MSFT,GOOGL',
+    stocks: 'stocks',
   },
   strategies: {
     title: 'Strategies',
@@ -110,5 +125,6 @@ export default {
   },
   common: {
     loading: 'Loading...',
+    applyFilter: 'Filter',
   },
 }

@@ -33,9 +33,11 @@ export default function StockList() {
     <div style={{ display: 'flex', gap: 20, height: '100%' }}>
       {/* Stock list */}
       <div style={{ flex: 1, maxWidth: 400 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>{t('stocks.title')}</h2>
         <div className="card table-card">
-          <div className="table-scroll">
+          <div className="card-header">
+            <div className="card-title">{t('stocks.title')}</div>
+          </div>
+          <div className="table-scroll" style={{ maxHeight: 'calc(100vh - 200px)' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -54,8 +56,8 @@ export default function StockList() {
                       background: selected === s.symbol ? 'var(--bg-active)' : undefined,
                     }}
                   >
-                    <td className="mono" style={{ color: 'var(--accent)' }}>{s.symbol}</td>
-                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className="mono" style={{ color: selected === s.symbol ? 'var(--selected)' : 'var(--accent)' }}>{s.symbol}</td>
+                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected === s.symbol ? 'var(--selected)' : undefined }}>
                       {s.name || '-'}
                     </td>
                     <td className="mono">${s.price?.toFixed(2) || '-'}</td>
@@ -75,8 +77,8 @@ export default function StockList() {
             <p>{t('stocks.selectStockDesc')}</p>
           </div>
         ) : (
-          <>
-            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div>
+            <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr 2fr' }}>
               <div className="stat-card">
                 <div className="stat-label">{t('stocks.symbol')}</div>
                 <div className="stat-value accent">{selected}</div>
@@ -87,13 +89,13 @@ export default function StockList() {
               </div>
               <div className="stat-card">
                 <div className="stat-label">{t('stocks.volume')}</div>
-                <div className="stat-value" style={{ fontSize: 16 }}>
+                <div className="stat-value">
                   {daily.length > 0 ? (daily[daily.length-1]?.volume / 1e6).toFixed(1) + 'M' : '-'}
                 </div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">{t('stocks.dataRange')}</div>
-                <div className="stat-value" style={{ fontSize: 14 }}>
+                <div className="stat-value">
                   {detail?.start_date || '-'} ~ {detail?.end_date || '-'}
                 </div>
               </div>
@@ -135,7 +137,7 @@ export default function StockList() {
                 </table>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
