@@ -9,4 +9,4 @@ echo ""
 cd "$(dirname "$0")"
 
 echo "启动中..."
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8777 --reload
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8777 --reload
