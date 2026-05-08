@@ -229,13 +229,13 @@ a:hover { color: var(--accent-hover); }
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -243,7 +243,7 @@ a:hover { color: var(--accent-hover); }
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.2;

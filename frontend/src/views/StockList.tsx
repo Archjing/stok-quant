@@ -253,7 +253,7 @@ export default function StockList() {
   if (loading) return <div className="loading">{t('stocks.loading')}</div>
 
   return (
-    <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 140px)' }}>
+    <div style={{ display: 'flex', gap: 20, flex: 1, padding: 24 }}>
       {/* Stock list */}
       <div style={{ flex: 1, maxWidth: 400, display: 'flex', flexDirection: 'column' }}>
         <div className="card table-card" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
