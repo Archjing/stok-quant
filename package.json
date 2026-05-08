@@ -1,8 +1,6 @@
 {
-  "dependencies": {
-    "apexcharts": "^5.11.0",
-    "i18next": "^26.0.10",
-    "react-apexcharts": "^2.1.0",
-    "react-i18next": "^17.0.7"
+  "devDependencies": {
+    "@types/node": "^20.19.40",
+    "@vitejs/plugin-react-oxc": "^0.4.3"
   }
 }

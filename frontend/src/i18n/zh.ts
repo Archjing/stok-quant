@@ -47,6 +47,7 @@ export default {
     volume: '成交量',
     dataRange: '数据区间',
     recentPriceHistory: '近期价格走势',
+    klineChart: 'K线图',
     lastDays: '最近60天',
     date: '日期',
     open: '开盘',

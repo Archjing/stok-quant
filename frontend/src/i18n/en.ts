@@ -47,6 +47,7 @@ export default {
     volume: 'Volume',
     dataRange: 'Data Range',
     recentPriceHistory: 'Recent Price History',
+    klineChart: 'K-Line Chart',
     lastDays: 'Last 60 days',
     date: 'Date',
     open: 'Open',

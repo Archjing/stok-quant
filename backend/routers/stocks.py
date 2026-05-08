@@ -2,8 +2,8 @@
 美股数据 API
 """
 import logging
-from typing import Optional, List
-from datetime import datetime, timedelta, date
+from typing import Optional
+from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException
 
 from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, SECTOR_MAP
@@ -14,6 +14,19 @@ router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 logger = logging.getLogger(__name__)
 data_source = USStockSource()
 data_mgr = DataManager(request_delay=0.6)
+
+
+def date_to_timestamp(d) -> int:
+    """将日期转换为 ApexCharts 需要的时间戳（毫秒）"""
+    if isinstance(d, str):
+        dt = datetime.strptime(d, "%Y-%m-%d")
+    elif isinstance(d, datetime):
+        dt = d
+    elif hasattr(d, 'to_pydatetime'):
+        dt = d.to_pydatetime()
+    else:
+        dt = datetime.combine(d, datetime.min.time())
+    return int(dt.timestamp() * 1000)
 
 # 指数成分映射
 INDEX_CONSTITUENTS = {
@@ -158,6 +171,7 @@ def get_stock_kline(
     """
     获取 K 线数据（支持日线、月线、年线）
     用于前端 K 线图展示
+    数据格式：{"x": 毫秒时间戳, "y": [open, high, low, close]}
     """
     sym = symbol.upper()
 
@@ -169,7 +183,7 @@ def get_stock_kline(
                 "period": "daily",
                 "source": "db",
                 "data": [
-                    {"x": str(r.date), "y": [r.open, r.high, r.low, r.close]}
+                    {"x": date_to_timestamp(r.date), "y": [r.open, r.high, r.low, r.close]}
                     for r in db_rows
                 ],
             }
@@ -181,92 +195,52 @@ def get_stock_kline(
                 "period": "daily",
                 "source": "yfinance",
                 "data": [
-                    {"x": str(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    {"x": date_to_timestamp(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
                     for r in df.to_dict(orient="records")
                 ],
             }
 
-    elif period == "monthly":
-        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, 5))
+    else:
+        # monthly 或 yearly：按周期分组，用第一个交易日的时间戳
+        import pandas as pd
+        freq = "M" if period == "monthly" else "Y"
+        min_years = 5 if period == "monthly" else 10
+        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, min_years))
+        source_label = "db"
         if db_rows:
-            import pandas as pd
             df = pd.DataFrame([
                 {"date": r.date, "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume}
                 for r in db_rows
             ])
+        else:
+            logger.info(f"{sym} {period} 数据库无缓存，从 yfinance 实时获取")
+            df = data_source.get_full_history(sym, years=max(years, min_years))
+            if df.empty:
+                raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
+            source_label = "yfinance"
             df["date"] = pd.to_datetime(df["date"])
-            monthly = df.resample("ME", on="date").agg({
-                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
-            }).dropna()
-            monthly.index = monthly.index.strftime("%Y-%m-%d")
-            return {
-                "symbol": sym,
-                "period": "monthly",
-                "source": "db",
-                "data": [
-                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for idx, r in monthly.reset_index().iterrows()
-                ],
-            }
-        logger.info(f"{sym} 月线数据库无缓存，从 yfinance 实时获取")
-        df = data_source.get_full_history(sym, years=max(years, 5))
-        if not df.empty:
-            import pandas as pd
-            df["date"] = pd.to_datetime(df["date"])
-            monthly = df.resample("ME", on="date").agg({
-                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
-            }).dropna()
-            monthly.index = monthly.index.strftime("%Y-%m-%d")
-            return {
-                "symbol": sym,
-                "period": "monthly",
-                "source": "yfinance",
-                "data": [
-                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for idx, r in monthly.reset_index().iterrows()
-                ],
-            }
 
-    elif period == "yearly":
-        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, 10))
-        if db_rows:
-            import pandas as pd
-            df = pd.DataFrame([
-                {"date": r.date, "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume}
-                for r in db_rows
-            ])
-            df["date"] = pd.to_datetime(df["date"])
-            yearly = df.resample("YE", on="date").agg({
-                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
-            }).dropna()
-            yearly.index = yearly.index.strftime("%Y-%m-%d")
-            return {
-                "symbol": sym,
-                "period": "yearly",
-                "source": "db",
-                "data": [
-                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for idx, r in yearly.reset_index().iterrows()
-                ],
-            }
-        logger.info(f"{sym} 年线数据库无缓存，从 yfinance 实时获取")
-        df = data_source.get_full_history(sym, years=max(years, 10))
-        if not df.empty:
-            import pandas as pd
-            df["date"] = pd.to_datetime(df["date"])
-            yearly = df.resample("YE", on="date").agg({
-                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
-            }).dropna()
-            yearly.index = yearly.index.strftime("%Y-%m-%d")
-            return {
-                "symbol": sym,
-                "period": "yearly",
-                "source": "yfinance",
-                "data": [
-                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for idx, r in yearly.reset_index().iterrows()
-                ],
-            }
+        df["date"] = pd.to_datetime(df["date"])
+        df["period"] = df["date"].dt.to_period(freq)
+        grouped = df.groupby("period")
+        data = []
+        for _, group in grouped:
+            row = group.iloc[0]
+            x_val = int(row["date"].timestamp() * 1000)
+            y_val = [
+                float(group["open"].iloc[0]),
+                float(group["high"].max()),
+                float(group["low"].min()),
+                float(group["close"].iloc[-1]),
+            ]
+            data.append({"x": x_val, "y": y_val})
+
+        return {
+            "symbol": sym,
+            "period": period,
+            "source": source_label,
+            "data": data,
+        }
 
     raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
 
