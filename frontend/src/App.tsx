@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { BarChart3, TrendingUp, Search, Activity, Settings, LineChart, FlaskConical, Github } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { BarChart3, TrendingUp, Search, Activity, LineChart, FlaskConical, Github, Globe } from 'lucide-react'
 import Dashboard from './views/Dashboard'
 import StockList from './views/StockList'
 import BacktestView from './views/BacktestView'
@@ -8,13 +9,21 @@ import AnalysisView from './views/AnalysisView'
 
 function App() {
   const location = useLocation()
+  const { t, i18n } = useTranslation()
+  const isZh = i18n.language === 'zh'
+
+  const toggleLang = () => {
+    const newLang = isZh ? 'en' : 'zh'
+    i18n.changeLanguage(newLang)
+    localStorage.setItem('lang', newLang)
+  }
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: BarChart3 },
-    { path: '/stocks', label: 'Stocks', icon: Search },
-    { path: '/backtest', label: 'Backtest', icon: TrendingUp },
-    { path: '/strategies', label: 'Strategies', icon: FlaskConical },
-    { path: '/analysis', label: 'Analysis', icon: Activity },
+    { path: '/', label: t('nav.dashboard'), icon: BarChart3 },
+    { path: '/stocks', label: t('nav.stocks'), icon: Search },
+    { path: '/backtest', label: t('nav.backtest'), icon: TrendingUp },
+    { path: '/strategies', label: t('nav.strategies'), icon: FlaskConical },
+    { path: '/analysis', label: t('nav.analysis'), icon: Activity },
   ]
 
   return (
@@ -24,14 +33,14 @@ function App() {
         <div className="sidebar-header">
           <div className="sidebar-title">
             <LineChart size={18} />
-            US Quant
+            {t('app.title')}
           </div>
-          <div className="sidebar-subtitle">Stock Analysis & Backtesting</div>
+          <div className="sidebar-subtitle">{t('app.subtitle')}</div>
         </div>
 
         <nav className="sidebar-nav">
           <div className="nav-section">
-            <div className="nav-section-title">Navigation</div>
+            <div className="nav-section-title">{t('nav.navigation')}</div>
             {navItems.map(item => (
               <NavLink
                 key={item.path}
@@ -48,15 +57,19 @@ function App() {
           </div>
         </nav>
 
-        <div style={{ padding: '8px', borderTop: '1px solid var(--border-light)' }}>
+        <div className="sidebar-footer">
+          <button className="lang-toggle" onClick={toggleLang}>
+            <Globe size={14} />
+            {isZh ? 'en' : '中文'}
+          </button>
           <a
             href="#"
             className="nav-item"
-            style={{ fontSize: '12px', color: 'var(--text-muted)' }}
+            style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '8px 12px' }}
             onClick={e => { e.preventDefault(); window.open('https://github.com', '_blank') }}
           >
             <Github size={14} />
-            v1.0.0
+            {t('app.version')}
           </a>
         </div>
       </aside>

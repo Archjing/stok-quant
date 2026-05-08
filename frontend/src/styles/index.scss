@@ -459,3 +459,33 @@ a:hover { color: var(--accent-hover); }
 .metric-positive { color: var(--success); }
 .metric-negative { color: var(--danger); }
 .metric-neutral { color: var(--text-secondary); }
+
+/* ===== Sidebar Footer (Lang Toggle) ===== */
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lang-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.lang-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
