@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { listStocks, getStockDaily } from '../api'
 
 export default function StockList() {
+  const { t } = useTranslation()
   const [stocks, setStocks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
@@ -25,20 +27,20 @@ export default function StockList() {
     setDetail(d)
   }
 
-  if (loading) return <div className="loading">Loading stocks...</div>
+  if (loading) return <div className="loading">{t('stocks.loading')}</div>
 
   return (
     <div style={{ display: 'flex', gap: 20, height: '100%' }}>
       {/* Stock list */}
       <div style={{ flex: 1, maxWidth: 400 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>US Stocks</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>{t('stocks.title')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
           <table className="data-table">
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Name</th>
-                <th>Price</th>
+                <th>{t('stocks.symbol')}</th>
+                <th>{t('stocks.name')}</th>
+                <th>{t('stocks.price')}</th>
               </tr>
             </thead>
             <tbody>
@@ -67,28 +69,28 @@ export default function StockList() {
       <div style={{ flex: 2 }}>
         {!selected ? (
           <div className="empty-state">
-            <h3>Select a stock</h3>
-            <p>Click on any stock symbol to view its price history and indicators</p>
+            <h3>{t('stocks.selectStock')}</h3>
+            <p>{t('stocks.selectStockDesc')}</p>
           </div>
         ) : (
           <>
             <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
               <div className="stat-card">
-                <div className="stat-label">Symbol</div>
+                <div className="stat-label">{t('stocks.symbol')}</div>
                 <div className="stat-value accent">{selected}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-label">Close</div>
+                <div className="stat-label">{t('stocks.close')}</div>
                 <div className="stat-value">{daily.length > 0 ? `$${daily[daily.length-1]?.close?.toFixed(2)}` : '-'}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-label">Volume</div>
+                <div className="stat-label">{t('stocks.volume')}</div>
                 <div className="stat-value" style={{ fontSize: 16 }}>
                   {daily.length > 0 ? (daily[daily.length-1]?.volume / 1e6).toFixed(1) + 'M' : '-'}
                 </div>
               </div>
               <div className="stat-card">
-                <div className="stat-label">Data Range</div>
+                <div className="stat-label">{t('stocks.dataRange')}</div>
                 <div className="stat-value" style={{ fontSize: 14 }}>
                   {detail?.start_date || '-'} ~ {detail?.end_date || '-'}
                 </div>
@@ -97,20 +99,20 @@ export default function StockList() {
 
             <div className="card">
               <div className="card-header">
-                <div className="card-title">Recent Price History</div>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Last 60 days</span>
+                <div className="card-title">{t('stocks.recentPriceHistory')}</div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('stocks.lastDays')}</span>
               </div>
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Open</th>
-                    <th>High</th>
-                    <th>Low</th>
-                    <th>Close</th>
-                    <th>Volume</th>
-                    <th>RSI(14)</th>
-                    <th>SMA(20)</th>
+                    <th>{t('stocks.date')}</th>
+                    <th>{t('stocks.open')}</th>
+                    <th>{t('stocks.high')}</th>
+                    <th>{t('stocks.low')}</th>
+                    <th>{t('stocks.close')}</th>
+                    <th>{t('stocks.volume')}</th>
+                    <th>{t('stocks.rsi')}</th>
+                    <th>{t('stocks.sma')}</th>
                   </tr>
                 </thead>
                 <tbody>

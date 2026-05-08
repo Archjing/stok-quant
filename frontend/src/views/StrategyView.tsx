@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Code, BookOpen, Terminal } from 'lucide-react'
 
 const strategies = [
@@ -6,7 +7,10 @@ const strategies = [
     id: 'sma_crossover',
     name: 'SMA Crossover',
     lang: 'Python',
-    desc: '双均线金叉死叉策略。短期SMA上穿长期SMA时买入，下穿时卖出。',
+    desc: {
+      en: 'Simple Moving Average Crossover strategy. Buy when short SMA crosses above long SMA, sell when it crosses below.',
+      zh: '双均线金叉死叉策略。短期SMA上穿长期SMA时买入，下穿时卖出。'
+    },
     code: `class SMACrossoverStrategy(Strategy):
     def on_bar(self, bar):
         sma20 = self.get_indicator("sma_20")
@@ -26,7 +30,10 @@ const strategies = [
     id: 'rsi_mean_reversion',
     name: 'RSI Mean Reversion',
     lang: 'Python',
-    desc: 'RSI均值回归策略。RSI低于30超卖时买入，高于70超买时卖出。',
+    desc: {
+      en: 'RSI Mean Reversion strategy. Buy when RSI is below 30 (oversold), sell when RSI is above 70 (overbought).',
+      zh: 'RSI均值回归策略。RSI低于30超卖时买入，高于70超买时卖出。'
+    },
     code: `class RSIMeanReversionStrategy(Strategy):
     def __init__(self, oversold=30, overbought=70):
         self.oversold = oversold
@@ -46,7 +53,10 @@ const strategies = [
     id: 'macd',
     name: 'MACD Trend',
     lang: 'Python',
-    desc: 'MACD趋势跟踪策略。MACD线上穿信号线时买入，下穿时卖出。',
+    desc: {
+      en: 'MACD Trend Following strategy. Buy when MACD line crosses above signal line, sell when it crosses below.',
+      zh: 'MACD趋势跟踪策略。MACD线上穿信号线时买入，下穿时卖出。'
+    },
     code: `class MACDStrategy(Strategy):
     def on_bar(self, bar):
         macd = self.get_indicator("macd")
@@ -65,7 +75,10 @@ const strategies = [
     id: 'clojure_dsl',
     name: 'SMA Crossover (Clojure DSL)',
     lang: 'Clojure',
-    desc: 'Clojure 函数式回测 DSL 版本。使用函数组合+不可变数据。',
+    desc: {
+      en: 'Clojure functional backtesting DSL version. Using function composition and immutable data.',
+      zh: 'Clojure 函数式回测 DSL 版本。使用函数组合+不可变数据。'
+    },
     code: `(ns my-strategies
   (:require [us-stock-quant.core :refer :all]))
 
@@ -81,7 +94,7 @@ const strategies = [
                  ;; Death cross
                  (when (and (pos? (:quantity pos))
                             (cross-under? ctx :sma20 :sma50))
-                   (sell! ctx (:symbol bar) 100))))}))
+                   (sell! ctx (:symbol bar) 100))))})))
 
 ;; Run: (run-backtest sma-crossover data {:initial-cash 100000.0})`,
   },
@@ -89,7 +102,10 @@ const strategies = [
     id: 'clojure_rsi',
     name: 'RSI Mean Rev (Clojure DSL)',
     lang: 'Clojure',
-    desc: 'Clojure 实现的RSI均值回归策略，展示函数式组合能力。',
+    desc: {
+      en: 'Clojure implementation of RSI Mean Reversion strategy, demonstrating functional composition.',
+      zh: 'Clojure 实现的RSI均值回归策略，展示函数式组合能力。'
+    },
     code: `(ns my-strategies
   (:require [us-stock-quant.core :refer :all]))
 
@@ -102,11 +118,13 @@ const strategies = [
                  (when (and rsi (< rsi 30) (zero? (:quantity pos)))
                    (buy! ctx (:symbol bar) 100))
                  (when (and rsi (> rsi 70) (pos? (:quantity pos)))
-                   (sell! ctx (:symbol bar) 100))))}))`,
+                   (sell! ctx (:symbol bar) 100))))})))`,
   },
 ]
 
 export default function StrategyView() {
+  const { t, i18n } = useTranslation()
+  const isZh = i18n.language === 'zh'
   const [activeTab, setActiveTab] = useState('python')
 
   const python = strategies.slice(0, 3)
@@ -114,7 +132,7 @@ export default function StrategyView() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>Trading Strategies</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>{t('strategies.title')}</h2>
 
       <div className="tabs">
         <button className={`tab ${activeTab === 'python' ? 'active' : ''}`}
@@ -145,7 +163,7 @@ export default function StrategyView() {
                   fontWeight: 600,
                   marginRight: 8,
                 }}>{s.lang}</span>
-                {s.desc}
+                {isZh ? s.desc.zh : s.desc.en}
               </div>
             </div>
           </div>

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BarChart3, TrendingUp, DollarSign, Activity } from 'lucide-react'
 import { getSymbols, listStrategies } from '../api'
 
 export default function Dashboard() {
+  const { t } = useTranslation()
   const [stats, setStats] = useState({ stocks: 0, strategies: 0, lastUpdate: '' })
 
   useEffect(() => {
@@ -21,15 +23,15 @@ export default function Dashboard() {
   }, [])
 
   const cards = [
-    { label: 'US Stocks', value: stats.stocks, icon: BarChart3, color: 'accent' },
-    { label: 'Strategies', value: stats.strategies, icon: TrendingUp, color: 'positive' },
-    { label: 'Data Source', value: 'Yahoo Finance', icon: DollarSign, color: '' },
-    { label: 'Last Update', value: stats.lastUpdate || '--', icon: Activity, color: '' },
+    { label: t('dashboard.usStocks'), value: stats.stocks, icon: BarChart3, color: 'accent' },
+    { label: t('dashboard.strategies'), value: stats.strategies, icon: TrendingUp, color: 'positive' },
+    { label: t('dashboard.dataSource'), value: 'Yahoo Finance', icon: DollarSign, color: '' },
+    { label: t('dashboard.lastUpdate'), value: stats.lastUpdate || '--', icon: Activity, color: '' },
   ]
 
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>Dashboard</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>{t('dashboard.title')}</h2>
 
       <div className="stats-grid">
         {cards.map(c => (
@@ -44,14 +46,14 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="card-header">
-          <div className="card-title">Quick Start</div>
+          <div className="card-title">{t('dashboard.quickStart')}</div>
         </div>
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
           {[
-            { title: 'Browse Stocks', desc: 'Search & explore US stocks data', path: '/stocks' },
-            { title: 'Run Backtest', desc: 'Test strategies on historical data', path: '/backtest' },
-            { title: 'View Strategies', desc: 'Explore quant trading strategies', path: '/strategies' },
-            { title: 'Technical Analysis', desc: 'RSI, MACD, Bollinger Bands', path: '/analysis' },
+            { title: t('dashboard.browseStocks'), desc: t('dashboard.browseStocksDesc'), path: '/stocks' },
+            { title: t('dashboard.runBacktest'), desc: t('dashboard.runBacktestDesc'), path: '/backtest' },
+            { title: t('dashboard.viewStrategies'), desc: t('dashboard.viewStrategiesDesc'), path: '/strategies' },
+            { title: t('dashboard.technicalAnalysis'), desc: t('dashboard.technicalAnalysisDesc'), path: '/analysis' },
           ].map(item => (
             <a
               key={item.title}
@@ -80,16 +82,16 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="card-header">
-          <div className="card-title">System Info</div>
+          <div className="card-title">{t('dashboard.systemInfo')}</div>
         </div>
         <table className="data-table">
           <tbody>
-            <tr><td style={{ width: 200 }}>Backend</td><td>FastAPI + yfinance</td></tr>
-            <tr><td>Backtesting Engine</td><td>Event-driven Python (Clojure DSL available)</td></tr>
-            <tr><td>Data Source</td><td>Yahoo Finance (yfinance)</td></tr>
-            <tr><td>Supported Exchanges</td><td>NYSE, NASDAQ, AMEX</td></tr>
-            <tr><td>UI Framework</td><td>React + TypeScript + SCSS</td></tr>
-            <tr><td>Clojure DSL</td><td>clj/ project for ClojureScript backtesting</td></tr>
+            <tr><td style={{ width: 200 }}>{t('dashboard.backend')}</td><td>FastAPI + yfinance</td></tr>
+            <tr><td>{t('dashboard.backtestingEngine')}</td><td>Event-driven Python (Clojure DSL available)</td></tr>
+            <tr><td>{t('dashboard.dataSourceFull')}</td><td>Yahoo Finance (yfinance)</td></tr>
+            <tr><td>{t('dashboard.supportedExchanges')}</td><td>NYSE, NASDAQ, AMEX</td></tr>
+            <tr><td>{t('dashboard.uiFramework')}</td><td>React + TypeScript + SCSS</td></tr>
+            <tr><td>{t('dashboard.clojureDsl')}</td><td>clj/ project for ClojureScript backtesting</td></tr>
           </tbody>
         </table>
       </div>

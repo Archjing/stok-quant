@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Activity } from 'lucide-react'
 import { getStockDaily } from '../api'
 
 const ALL_SYMBOLS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY"]
 
 export default function AnalysisView() {
+  const { t } = useTranslation()
   const [symbol, setSymbol] = useState('AAPL')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<any[]>([])
@@ -33,13 +35,13 @@ export default function AnalysisView() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>Technical Analysis</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>{t('analysis.title')}</h2>
 
       {/* Controls */}
       <div className="card">
         <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
           <div className="form-group" style={{ minWidth: 140 }}>
-            <label className="form-label">Symbol</label>
+            <label className="form-label">{t('stocks.symbol')}</label>
             <select className="form-select" value={symbol} onChange={e => setSymbol(e.target.value)}>
               {ALL_SYMBOLS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -47,7 +49,7 @@ export default function AnalysisView() {
           <div className="form-group">
             <label className="form-label">&nbsp;</label>
             <button className="btn btn-primary" onClick={loadData} disabled={loading}>
-              {loading ? 'Loading...' : 'Load Analysis'}
+              {loading ? t('common.loading') : t('analysis.loadAnalysis')}
             </button>
           </div>
         </div>
@@ -58,27 +60,27 @@ export default function AnalysisView() {
           {/* Price & Signal */}
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <div className="stat-card">
-              <div className="stat-label">Current Price</div>
+              <div className="stat-label">{t('analysis.currentPrice')}</div>
               <div className="stat-value accent">${latest.close?.toFixed(2)}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Signal</div>
+              <div className="stat-label">{t('analysis.signal')}</div>
               <div className={`stat-value ${
                 latest.close > latest.sma_50 ? 'positive' : 'negative'
               }`}>
-                {latest.close > latest.sma_50 ? 'BULLISH' : 'BEARISH'}
+                {latest.close > latest.sma_50 ? t('analysis.bullish') : t('analysis.bearish')}
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">RSI Status</div>
+              <div className="stat-label">{t('analysis.rsiStatus')}</div>
               <div className={`stat-value ${
                 latest.rsi_14 > 70 ? 'negative' : latest.rsi_14 < 30 ? 'positive' : ''
               }`}>
-                {latest.rsi_14 > 70 ? 'Overbought' : latest.rsi_14 < 30 ? 'Oversold' : 'Neutral'}
+                {latest.rsi_14 > 70 ? t('analysis.overbought') : latest.rsi_14 < 30 ? t('analysis.oversold') : t('analysis.neutral')}
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Volume</div>
+              <div className="stat-label">{t('stocks.volume')}</div>
               <div className="stat-value" style={{ fontSize: 16 }}>
                 {latest.volume ? `${(latest.volume / 1e6).toFixed(1)}M` : '-'}
               </div>
@@ -88,9 +90,9 @@ export default function AnalysisView() {
           {/* Indicators */}
           <div className="card">
             <div className="card-header">
-              <div className="card-title">Technical Indicators</div>
+              <div className="card-title">{t('analysis.technicalIndicators')}</div>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Last updated: {latest.date}
+                {t('analysis.lastUpdated')}: {latest.date}
               </span>
             </div>
             <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
@@ -111,18 +113,18 @@ export default function AnalysisView() {
           {/* Price table */}
           <div className="card">
             <div className="card-header">
-              <div className="card-title">Recent Data</div>
+              <div className="card-title">{t('analysis.recentData')}</div>
             </div>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Close</th>
-                  <th>RSI(14)</th>
+                  <th>{t('stocks.date')}</th>
+                  <th>{t('stocks.close')}</th>
+                  <th>{t('stocks.rsi')}</th>
                   <th>MACD</th>
                   <th>SMA(20)</th>
                   <th>SMA(50)</th>
-                  <th>Volume</th>
+                  <th>{t('stocks.volume')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,8 +152,8 @@ export default function AnalysisView() {
       {data.length === 0 && (
         <div className="empty-state">
           <Activity size={48} />
-          <h3>Load analysis data</h3>
-          <p>Select a symbol and click "Load Analysis" to view technical indicators</p>
+          <h3>{t('analysis.loadAnalysisData')}</h3>
+          <p>{t('analysis.loadAnalysisDataDesc')}</p>
         </div>
       )}
     </div>
