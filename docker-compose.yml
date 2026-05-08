@@ -2,7 +2,7 @@ services:
   frontend:
     image: nginx:alpine
     volumes:
-      - /opt/stock-us-code/checkout/frontend:/usr/share/nginx/html
+      - /root/sites/stock-quant/checkout/frontend:/usr/share/nginx/html
     ports:
       - "8081:80"
     depends_on:
@@ -14,7 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - /opt/stock-us-code/backend:/app
+      - /root/sites/stock-quant/backend:/app
       - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
