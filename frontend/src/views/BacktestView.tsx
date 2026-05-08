@@ -111,36 +111,38 @@ export default function BacktestView() {
 
       {/* Compare mode */}
       {compareResult && (
-        <div className="card">
+        <div className="card table-card">
           <div className="card-header">
             <div className="card-title">{t('backtest.strategyComparison')} - {compareResult.symbol}</div>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t('backtest.strategy')}</th>
-                <th>{t('backtest.return')}</th>
-                <th>{t('backtest.sharpe')}</th>
-                <th>{t('backtest.maxDD')}</th>
-                <th>{t('backtest.trades')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {compareResult.strategies && Object.entries(compareResult.strategies).map(([id, s]: [string, any]) => (
-                <tr key={id}>
-                  <td style={{ color: 'var(--accent)' }}>{getStrategyName(id)}</td>
-                  <td className={`mono ${s.total_return_pct > 0 ? 'metric-positive' : 'metric-negative'}`}>
-                    {formatPct(s.total_return_pct)}
-                  </td>
-                  <td className={`mono ${s.sharpe_ratio > 1 ? 'metric-positive' : 'metric-neutral'}`}>
-                    {formatRatio(s.sharpe_ratio)}
-                  </td>
-                  <td className="mono metric-negative">{formatPct(s.max_drawdown_pct)}</td>
-                  <td className="mono">{s.total_trades}</td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('backtest.strategy')}</th>
+                  <th>{t('backtest.return')}</th>
+                  <th>{t('backtest.sharpe')}</th>
+                  <th>{t('backtest.maxDD')}</th>
+                  <th>{t('backtest.trades')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {compareResult.strategies && Object.entries(compareResult.strategies).map(([id, s]: [string, any]) => (
+                  <tr key={id}>
+                    <td style={{ color: 'var(--accent)' }}>{getStrategyName(id)}</td>
+                    <td className={`mono ${s.total_return_pct > 0 ? 'metric-positive' : 'metric-negative'}`}>
+                      {formatPct(s.total_return_pct)}
+                    </td>
+                    <td className={`mono ${s.sharpe_ratio > 1 ? 'metric-positive' : 'metric-neutral'}`}>
+                      {formatRatio(s.sharpe_ratio)}
+                    </td>
+                    <td className="mono metric-negative">{formatPct(s.max_drawdown_pct)}</td>
+                    <td className="mono">{s.total_trades}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -160,46 +162,48 @@ export default function BacktestView() {
             <MetricCard label={t('backtest.endCash')} value={`$${(result.results.end_cash || 0).toLocaleString()}`} />
           </div>
 
-          <div className="card">
+          <div className="card table-card">
             <div className="card-header">
               <div className="card-title">{t('backtest.tradeLog')}</div>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {result.results.total_trades} {t('backtest.tradeCount')}
               </span>
             </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>{t('backtest.side')}</th>
-                  <th>{t('backtest.qty')}</th>
-                  <th>{t('backtest.symbol')}</th>
-                  <th>{t('backtest.pnl')}</th>
-                  <th>{t('backtest.tag')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(result.trades || []).map((t: any, i: number) => (
-                  <tr key={i}>
-                    <td className="mono" style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td>
-                      <span style={{
-                        color: t.side === 'buy' ? 'var(--success)' : 'var(--danger)',
-                        fontWeight: 500,
-                      }}>
-                        {t.side.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="mono">{t.quantity}</td>
-                    <td className="mono">${t.price?.toFixed(2)}</td>
-                    <td className={`mono ${t.pnl > 0 ? 'metric-positive' : t.pnl < 0 ? 'metric-negative' : ''}`}>
-                      {t.pnl ? `$${t.pnl.toFixed(2)}` : '-'}
-                    </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.tag || '-'}</td>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>{t('backtest.side')}</th>
+                    <th>{t('backtest.qty')}</th>
+                    <th>{t('backtest.symbol')}</th>
+                    <th>{t('backtest.pnl')}</th>
+                    <th>{t('backtest.tag')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(result.trades || []).map((t: any, i: number) => (
+                    <tr key={i}>
+                      <td className="mono" style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td>
+                        <span style={{
+                          color: t.side === 'buy' ? 'var(--success)' : 'var(--danger)',
+                          fontWeight: 500,
+                        }}>
+                          {t.side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="mono">{t.quantity}</td>
+                      <td className="mono">${t.price?.toFixed(2)}</td>
+                      <td className={`mono ${t.pnl > 0 ? 'metric-positive' : t.pnl < 0 ? 'metric-negative' : ''}`}>
+                        {t.pnl ? `$${t.pnl.toFixed(2)}` : '-'}
+                      </td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.tag || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

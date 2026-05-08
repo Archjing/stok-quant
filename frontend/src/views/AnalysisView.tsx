@@ -111,40 +111,42 @@ export default function AnalysisView() {
           </div>
 
           {/* Price table */}
-          <div className="card">
+          <div className="card table-card">
             <div className="card-header">
               <div className="card-title">{t('analysis.recentData')}</div>
             </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t('stocks.date')}</th>
-                  <th>{t('stocks.close')}</th>
-                  <th>{t('stocks.rsi')}</th>
-                  <th>MACD</th>
-                  <th>SMA(20)</th>
-                  <th>SMA(50)</th>
-                  <th>{t('stocks.volume')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.slice(-30).map((d: any, i: number) => (
-                  <tr key={i}>
-                    <td className="mono" style={{ fontSize: 12 }}>{d.date}</td>
-                    <td className="mono" style={{ fontWeight: 500 }}>${d.close?.toFixed(2)}</td>
-                    <td className={`mono ${d.rsi_14 > 70 ? 'metric-negative' : d.rsi_14 < 30 ? 'metric-positive' : ''}`}>
-                      {d.rsi_14?.toFixed(1) || '-'}
-                    </td>
-                    <td className={`mono ${(d.macd_hist || 0) > 0 ? 'metric-positive' : 'metric-negative'}`}>
-                      {d.macd?.toFixed(4) || '-'}
-                    </td>
-                    <td className="mono">{d.sma_20 ? `$${d.sma_20.toFixed(2)}` : '-'}</td>
-                    <td className="mono">{d.sma_50 ? `$${d.sma_50.toFixed(2)}` : '-'}</td>
-                    <td className="mono">{d.volume ? `${(d.volume / 1e6).toFixed(1)}M` : '-'}</td>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('stocks.date')}</th>
+                    <th>{t('stocks.close')}</th>
+                    <th>{t('stocks.rsi')}</th>
+                    <th>MACD</th>
+                    <th>SMA(20)</th>
+                    <th>SMA(50)</th>
+                    <th>{t('stocks.volume')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.slice(-30).map((d: any, i: number) => (
+                    <tr key={i}>
+                      <td className="mono" style={{ fontSize: 12 }}>{d.date}</td>
+                      <td className="mono" style={{ fontWeight: 500 }}>${d.close?.toFixed(2)}</td>
+                      <td className={`mono ${d.rsi_14 > 70 ? 'metric-negative' : d.rsi_14 < 30 ? 'metric-positive' : ''}`}>
+                        {d.rsi_14?.toFixed(1) || '-'}
+                      </td>
+                      <td className={`mono ${(d.macd_hist || 0) > 0 ? 'metric-positive' : 'metric-negative'}`}>
+                        {d.macd?.toFixed(4) || '-'}
+                      </td>
+                      <td className="mono">{d.sma_20 ? `$${d.sma_20.toFixed(2)}` : '-'}</td>
+                      <td className="mono">{d.sma_50 ? `$${d.sma_50.toFixed(2)}` : '-'}</td>
+                      <td className="mono">{d.volume ? `${(d.volume / 1e6).toFixed(1)}M` : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

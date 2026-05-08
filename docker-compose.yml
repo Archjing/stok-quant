@@ -1,10 +1,10 @@
 services:
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: nginx:alpine
+    volumes:
+      - /opt/stock-us-code/frontend:/usr/share/nginx/html
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -13,11 +13,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8777:8777"
     volumes:
+      - /opt/stock-us-code/backend:/app
       - ./data:/app/data
-      - ./config.yaml:/app/config.yaml
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped

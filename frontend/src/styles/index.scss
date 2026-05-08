@@ -255,9 +255,30 @@ a:hover { color: var(--accent-hover); }
 }
 
 /* ===== Tables (Obsidian 表格风格) ===== */
+.table-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.table-card .card-header {
+  padding: 16px 20px;
+}
+
+.table-scroll {
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
+}
+
+.data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-surface);
 }
 
 .data-table th {

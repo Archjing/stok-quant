@@ -34,34 +34,36 @@ export default function StockList() {
       {/* Stock list */}
       <div style={{ flex: 1, maxWidth: 400 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>{t('stocks.title')}</h2>
-        <div className="card" style={{ padding: 0, overflow: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t('stocks.symbol')}</th>
-                <th>{t('stocks.name')}</th>
-                <th>{t('stocks.price')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stocks.map((s: any) => (
-                <tr
-                  key={s.symbol}
-                  onClick={() => selectStock(s.symbol)}
-                  style={{
-                    cursor: 'pointer',
-                    background: selected === s.symbol ? 'var(--bg-active)' : undefined,
-                  }}
-                >
-                  <td className="mono" style={{ color: 'var(--accent)' }}>{s.symbol}</td>
-                  <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.name || '-'}
-                  </td>
-                  <td className="mono">${s.price?.toFixed(2) || '-'}</td>
+        <div className="card table-card">
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('stocks.symbol')}</th>
+                  <th>{t('stocks.name')}</th>
+                  <th>{t('stocks.price')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {stocks.map((s: any) => (
+                  <tr
+                    key={s.symbol}
+                    onClick={() => selectStock(s.symbol)}
+                    style={{
+                      cursor: 'pointer',
+                      background: selected === s.symbol ? 'var(--bg-active)' : undefined,
+                    }}
+                  >
+                    <td className="mono" style={{ color: 'var(--accent)' }}>{s.symbol}</td>
+                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.name || '-'}
+                    </td>
+                    <td className="mono">${s.price?.toFixed(2) || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -97,39 +99,41 @@ export default function StockList() {
               </div>
             </div>
 
-            <div className="card">
+            <div className="card table-card">
               <div className="card-header">
                 <div className="card-title">{t('stocks.recentPriceHistory')}</div>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('stocks.lastDays')}</span>
               </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>{t('stocks.date')}</th>
-                    <th>{t('stocks.open')}</th>
-                    <th>{t('stocks.high')}</th>
-                    <th>{t('stocks.low')}</th>
-                    <th>{t('stocks.close')}</th>
-                    <th>{t('stocks.volume')}</th>
-                    <th>{t('stocks.rsi')}</th>
-                    <th>{t('stocks.sma')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {daily.slice(0, 30).map((d: any, i: number) => (
-                    <tr key={i}>
-                      <td className="mono" style={{ fontSize: 12 }}>{d.date}</td>
-                      <td className="mono">${d.open?.toFixed(2)}</td>
-                      <td className="mono">${d.high?.toFixed(2)}</td>
-                      <td className="mono">${d.low?.toFixed(2)}</td>
-                      <td className="mono" style={{ fontWeight: 500 }}>${d.close?.toFixed(2)}</td>
-                      <td className="mono">{(d.volume / 1e6).toFixed(1)}M</td>
-                      <td className="mono">{d.rsi_14 ? d.rsi_14.toFixed(1) : '-'}</td>
-                      <td className="mono">{d.sma_20 ? `$${d.sma_20.toFixed(2)}` : '-'}</td>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t('stocks.date')}</th>
+                      <th>{t('stocks.open')}</th>
+                      <th>{t('stocks.high')}</th>
+                      <th>{t('stocks.low')}</th>
+                      <th>{t('stocks.close')}</th>
+                      <th>{t('stocks.volume')}</th>
+                      <th>{t('stocks.rsi')}</th>
+                      <th>{t('stocks.sma')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {daily.slice(0, 30).map((d: any, i: number) => (
+                      <tr key={i}>
+                        <td className="mono" style={{ fontSize: 12 }}>{d.date}</td>
+                        <td className="mono">${d.open?.toFixed(2)}</td>
+                        <td className="mono">${d.high?.toFixed(2)}</td>
+                        <td className="mono">${d.low?.toFixed(2)}</td>
+                        <td className="mono" style={{ fontWeight: 500 }}>${d.close?.toFixed(2)}</td>
+                        <td className="mono">{(d.volume / 1e6).toFixed(1)}M</td>
+                        <td className="mono">{d.rsi_14 ? d.rsi_14.toFixed(1) : '-'}</td>
+                        <td className="mono">{d.sma_20 ? `$${d.sma_20.toFixed(2)}` : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
