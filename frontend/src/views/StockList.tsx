@@ -30,14 +30,14 @@ export default function StockList() {
   if (loading) return <div className="loading">{t('stocks.loading')}</div>
 
   return (
-    <div style={{ display: 'flex', gap: 20, height: '100%' }}>
+    <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 140px)' }}>
       {/* Stock list */}
-      <div style={{ flex: 1, maxWidth: 400 }}>
-        <div className="card table-card">
+      <div style={{ flex: 1, maxWidth: 400, display: 'flex', flexDirection: 'column' }}>
+        <div className="card table-card" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div className="card-header">
             <div className="card-title">{t('stocks.title')}</div>
           </div>
-          <div className="table-scroll" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+          <div className="table-scroll" style={{ flex: 1 }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -70,15 +70,15 @@ export default function StockList() {
       </div>
 
       {/* Detail panel */}
-      <div style={{ flex: 2 }}>
+      <div style={{ flex: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selected ? (
           <div className="empty-state">
             <h3>{t('stocks.selectStock')}</h3>
             <p>{t('stocks.selectStockDesc')}</p>
           </div>
         ) : (
-          <div>
-            <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr 2fr' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr 2fr', marginBottom: 16 }}>
               <div className="stat-card">
                 <div className="stat-label">{t('stocks.symbol')}</div>
                 <div className="stat-value accent">{selected}</div>
@@ -101,12 +101,12 @@ export default function StockList() {
               </div>
             </div>
 
-            <div className="card table-card">
+            <div className="card table-card" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div className="card-header">
                 <div className="card-title">{t('stocks.recentPriceHistory')}</div>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('stocks.lastDays')}</span>
               </div>
-              <div className="table-scroll">
+              <div className="table-scroll" style={{ flex: 1 }}>
                 <table className="data-table">
                   <thead>
                     <tr>

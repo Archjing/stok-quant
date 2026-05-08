@@ -2,7 +2,7 @@ services:
   frontend:
     image: nginx:alpine
     volumes:
-      - /opt/stock-us-code/frontend:/usr/share/nginx/html
+      - /opt/stock-us-code/checkout/frontend:/usr/share/nginx/html
     ports:
       - "8081:80"
     depends_on:
