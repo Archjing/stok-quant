@@ -42,17 +42,11 @@ EXCHANGE_MAP = {
 @router.get("/filters")
 def get_filter_options():
     """获取筛选选项"""
-    # 获取所有板块
     sectors = list(set(SECTOR_MAP.values()))
     sectors = [s for s in sectors if s]
     sectors.sort()
-    
-    # 获取所有交易所
     exchanges = list(EXCHANGE_MAP.keys())
-    
-    # 获取指数列表
     indices = list(INDEX_CONSTITUENTS.keys())
-    
     return {
         "sectors": sectors,
         "exchanges": exchanges,
@@ -71,26 +65,21 @@ def list_stocks(
     """获取美股列表（支持多种筛选方式）"""
     stocks = data_mgr.get_stock_list()
     
-    # 应用筛选
     if filter_type and filter_value:
         if filter_type == "sector":
             stocks = [s for s in stocks if s.get("sector") == filter_value]
         elif filter_type == "exchange":
-            # 从交易所映射获取该交易所的股票
             exchange_stocks = EXCHANGE_MAP.get(filter_value, [])
             stocks = [s for s in stocks if s["symbol"] in exchange_stocks]
         elif filter_type == "market_cap":
-            # 按市值排序取前N
             limit_n = int(filter_value)
             stocks_with_cap = [s for s in stocks if s.get("market_cap")]
             stocks_with_cap.sort(key=lambda x: x.get("market_cap", 0), reverse=True)
             stocks = stocks_with_cap[:limit_n]
         elif filter_type == "index":
-            # 按指数成分筛选
             index_stocks = INDEX_CONSTITUENTS.get(filter_value, [])
             stocks = [s for s in stocks if s["symbol"] in index_stocks]
         elif filter_type == "custom":
-            # 自定义符号列表（逗号分隔）
             custom_symbols = [s.strip().upper() for s in filter_value.split(",")]
             stocks = [s for s in stocks if s["symbol"] in custom_symbols]
     
@@ -105,14 +94,7 @@ def get_symbols():
     return {"symbols": MAJOR_US_STOCKS, "total": len(MAJOR_US_STOCKS)}
 
 
-@router.get("/{symbol}")
-def get_stock_detail(symbol: str):
-    """获取股票详情"""
-    info = data_source.get_stock_info(symbol.upper())
-    if not info:
-        raise HTTPException(404, f"股票 {symbol} 未找到")
-    return info
-
+# ============ 带 symbol 路径的路由必须放在 /{symbol} 通用路由之前 ============
 
 @router.get("/{symbol}/daily")
 def get_stock_daily(
@@ -123,7 +105,6 @@ def get_stock_daily(
     """获取日线数据（优先从数据库缓存读取，不足时实时从 yfinance 获取）"""
     sym = symbol.upper()
 
-    # 1) 尝试从数据库读取
     db_rows = data_mgr.get_daily_from_db(sym, years=years)
     if db_rows:
         return {
@@ -149,7 +130,6 @@ def get_stock_daily(
             ],
         }
 
-    # 2) 数据库无数据，fallback 到 yfinance
     logger.info(f"{sym} 数据库无缓存，从 yfinance 实时获取")
     df = data_source.get_full_history(sym, years=years)
     if df.empty:
@@ -169,12 +149,145 @@ def get_stock_daily(
     }
 
 
+@router.get("/{symbol}/kline")
+def get_stock_kline(
+    symbol: str,
+    period: str = Query("daily", description="周期: daily|monthly|yearly"),
+    years: int = Query(5, ge=1, le=30),
+):
+    """
+    获取 K 线数据（支持日线、月线、年线）
+    用于前端 K 线图展示
+    """
+    sym = symbol.upper()
+
+    if period == "daily":
+        db_rows = data_mgr.get_daily_from_db(sym, years=years)
+        if db_rows:
+            return {
+                "symbol": sym,
+                "period": "daily",
+                "source": "db",
+                "data": [
+                    {"x": str(r.date), "y": [r.open, r.high, r.low, r.close]}
+                    for r in db_rows
+                ],
+            }
+        logger.info(f"{sym} 日线数据库无缓存，从 yfinance 实时获取")
+        df = data_source.get_full_history(sym, years=years)
+        if not df.empty:
+            return {
+                "symbol": sym,
+                "period": "daily",
+                "source": "yfinance",
+                "data": [
+                    {"x": str(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for r in df.to_dict(orient="records")
+                ],
+            }
+
+    elif period == "monthly":
+        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, 5))
+        if db_rows:
+            import pandas as pd
+            df = pd.DataFrame([
+                {"date": r.date, "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume}
+                for r in db_rows
+            ])
+            df["date"] = pd.to_datetime(df["date"])
+            monthly = df.resample("ME", on="date").agg({
+                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
+            }).dropna()
+            monthly.index = monthly.index.strftime("%Y-%m-%d")
+            return {
+                "symbol": sym,
+                "period": "monthly",
+                "source": "db",
+                "data": [
+                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for idx, r in monthly.reset_index().iterrows()
+                ],
+            }
+        logger.info(f"{sym} 月线数据库无缓存，从 yfinance 实时获取")
+        df = data_source.get_full_history(sym, years=max(years, 5))
+        if not df.empty:
+            import pandas as pd
+            df["date"] = pd.to_datetime(df["date"])
+            monthly = df.resample("ME", on="date").agg({
+                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
+            }).dropna()
+            monthly.index = monthly.index.strftime("%Y-%m-%d")
+            return {
+                "symbol": sym,
+                "period": "monthly",
+                "source": "yfinance",
+                "data": [
+                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for idx, r in monthly.reset_index().iterrows()
+                ],
+            }
+
+    elif period == "yearly":
+        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, 10))
+        if db_rows:
+            import pandas as pd
+            df = pd.DataFrame([
+                {"date": r.date, "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume}
+                for r in db_rows
+            ])
+            df["date"] = pd.to_datetime(df["date"])
+            yearly = df.resample("YE", on="date").agg({
+                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
+            }).dropna()
+            yearly.index = yearly.index.strftime("%Y-%m-%d")
+            return {
+                "symbol": sym,
+                "period": "yearly",
+                "source": "db",
+                "data": [
+                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for idx, r in yearly.reset_index().iterrows()
+                ],
+            }
+        logger.info(f"{sym} 年线数据库无缓存，从 yfinance 实时获取")
+        df = data_source.get_full_history(sym, years=max(years, 10))
+        if not df.empty:
+            import pandas as pd
+            df["date"] = pd.to_datetime(df["date"])
+            yearly = df.resample("YE", on="date").agg({
+                "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
+            }).dropna()
+            yearly.index = yearly.index.strftime("%Y-%m-%d")
+            return {
+                "symbol": sym,
+                "period": "yearly",
+                "source": "yfinance",
+                "data": [
+                    {"x": idx, "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for idx, r in yearly.reset_index().iterrows()
+                ],
+            }
+
+    raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
+
+
 @router.get("/{symbol}/financials")
 def get_stock_financials(symbol: str):
     """获取财务数据"""
     financials = data_source.get_financials(symbol.upper())
     info = data_source.get_stock_info(symbol.upper())
     return {"symbol": symbol.upper(), "info": info, "financials": financials}
+
+
+# ============ 通用路由放在最后 ============
+
+@router.get("/{symbol}")
+def get_stock_detail(symbol: str):
+    """获取股票详情"""
+    info = data_source.get_stock_info(symbol.upper())
+    if not info:
+        raise HTTPException(404, f"股票 {symbol} 未找到")
+    return info
 
 
 @router.get("/sectors/list")

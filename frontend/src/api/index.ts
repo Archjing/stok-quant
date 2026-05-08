@@ -17,6 +17,8 @@ export const getSymbols = () => http.get('/api/stocks/symbols')
 export const getStockDetail = (symbol: string) => http.get(`/api/stocks/${symbol}`)
 export const getStockDaily = (symbol: string, params?: any) =>
   http.get(`/api/stocks/${symbol}/daily`, { params })
+export const getStockKline = (symbol: string, params?: any) =>
+  http.get(`/api/stocks/${symbol}/kline`, { params })
 export const getStockFinancials = (symbol: string) =>
   http.get(`/api/stocks/${symbol}/financials`)
 export const listSectors = () => http.get('/api/stocks/sectors/list')
