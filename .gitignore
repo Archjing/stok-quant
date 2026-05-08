@@ -28,8 +28,8 @@ Thumbs.db
 Desktop.ini
 
 # Project data & secrets
-data/*.db
-data/*.sqlite3
+# data/*.db
+# data/*.sqlite3
 *.log
 .env
 .env.local

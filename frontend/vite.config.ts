@@ -21,6 +21,16 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: false,
     chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-i18n': ['i18next', 'react-i18next'],
+          'vendor-charts': ['recharts', 'apexcharts', 'react-apexcharts'],
+          'vendor-utils': ['axios', 'dayjs', 'lucide-react'],
+        },
+      },
+    },
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom', 'i18next', 'react-i18next'],
