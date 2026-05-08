@@ -91,6 +91,7 @@ export default {
     // Filter
     stockFilter: 'Stock Filter',
     strategyControl: 'Strategy Control',
+    selectedStock: 'Selected Stock',
     allStocks: 'All Stocks',
     bySector: 'By Sector',
     byExchange: 'By Exchange',

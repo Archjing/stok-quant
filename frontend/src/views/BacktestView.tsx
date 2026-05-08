@@ -119,16 +119,21 @@ export default function BacktestView() {
 
   const run = async () => {
     setLoading(true)
+    setResult(null)
+    setCompareResult(null)
     try {
       if (compareMode) {
         const res = await compareStrategies({ symbol, years })
-        setCompareResult(res as any)
-        setResult(null)
+        console.log('Compare result:', res)
+        setCompareResult(res)
       } else {
         const res = await runBacktest({ symbol, strategy, years })
-        setResult(res as any)
-        setCompareResult(null)
+        console.log('Backtest result:', res)
+        setResult(res)
       }
+    } catch (error: any) {
+      console.error('Backtest error:', error)
+      alert(`回测失败: ${error.message || '未知错误'}`)
     } finally {
       setLoading(false)
     }
@@ -292,6 +297,17 @@ export default function BacktestView() {
           {/* Right: Strategy Controls */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div className="card" style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Selected Stock Indicator */}
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(0, 127, 255, 0.1)', borderRadius: 6, border: '1px solid var(--accent)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('backtest.selectedStock') || 'Selected Stock'}: </span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{symbol}</span>
+                {stocks.find(s => s.symbol === symbol) && (
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)', marginLeft: 8 }}>
+                    {stocks.find(s => s.symbol === symbol)?.name}
+                  </span>
+                )}
+              </div>
+              
               <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ minWidth: 160 }}>
                   <label className="form-label">{t('backtest.strategyControl')}</label>
@@ -366,16 +382,20 @@ export default function BacktestView() {
                       onClick={() => setSymbol(s.symbol)}
                       style={{
                         cursor: 'pointer',
-                        background: symbol === s.symbol ? 'var(--bg-active)' : undefined,
+                        background: symbol === s.symbol ? 'rgba(0, 127, 255, 0.15)' : undefined,
+                        borderLeft: symbol === s.symbol ? '3px solid var(--accent)' : '3px solid transparent',
                       }}
                     >
-                      <td className="mono" style={{ color: 'var(--accent)' }}>{s.symbol}</td>
+                      <td className="mono" style={{ 
+                        color: symbol === s.symbol ? 'var(--accent)' : 'var(--accent)',
+                        fontWeight: symbol === s.symbol ? 700 : 400,
+                      }}>{s.symbol}</td>
                       <td style={{
                         maxWidth: 180,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        color: symbol === s.symbol ? '#C9A0A0' : undefined,
+                        color: symbol === s.symbol ? 'var(--text-primary)' : 'var(--text-secondary)',
                         fontWeight: symbol === s.symbol ? 600 : 400,
                       }}>
                         {s.name || s.symbol}

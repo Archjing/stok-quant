@@ -91,6 +91,7 @@ export default {
     // Filter
     stockFilter: '选股筛选',
     strategyControl: '策略控制',
+    selectedStock: '已选股票',
     allStocks: '全部股票',
     bySector: '按板块',
     byExchange: '按交易所',

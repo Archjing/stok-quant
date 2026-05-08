@@ -10,6 +10,38 @@ class USDataCleaner:
     """美股数据清洗器"""
 
     @staticmethod
+    def clean_daily_data_from_db_rows(rows) -> pd.DataFrame:
+        """将数据库行转换为 DataFrame 并清洗"""
+        import pandas as pd
+        data = []
+        for r in rows:
+            data.append({
+                "date": r.date,
+                "open": r.open,
+                "high": r.high,
+                "low": r.low,
+                "close": r.close,
+                "volume": r.volume,
+                "adjusted_close": r.adjusted_close,
+                "sma_20": r.sma_20,
+                "sma_50": r.sma_50,
+                "sma_200": r.sma_200,
+                "ema_12": r.ema_12,
+                "ema_26": r.ema_26,
+                "macd": r.macd,
+                "macd_signal": r.macd_signal,
+                "macd_hist": r.macd_hist,
+                "rsi_14": r.rsi_14,
+                "bb_upper": r.bb_upper,
+                "bb_middle": r.bb_middle,
+                "bb_lower": r.bb_lower,
+                "atr_14": r.atr_14,
+                "volume_sma_20": r.volume_sma_20,
+            })
+        df = pd.DataFrame(data)
+        return USDataCleaner.clean_daily_data(df)
+
+    @staticmethod
     def clean_daily_data(df: pd.DataFrame) -> pd.DataFrame:
         """清洗日线数据"""
         if df.empty:
