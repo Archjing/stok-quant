@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+
 import { useTranslation } from "react-i18next";
 import {
   runBacktest,
@@ -23,7 +24,24 @@ interface FilterOptions {
   exchanges: string[];
   indices: string[];
   market_cap_options: number[];
+  boards?: string[];
 }
+
+const DEFAULT_SYMBOLS: Record<MarketCode, string> = {
+  US: "AAPL",
+  CN: "SH.600519",
+  HK: "HK.00700",
+};
+
+const marketCurrency = (market: MarketCode) =>
+  MARKETS.find((m) => m.code === market)?.currency || "USD";
+
+const filterOptionsForMarket = (market: MarketCode) => {
+  if (market === "US") {
+    return ["sector", "exchange", "market_cap", "index", "custom"];
+  }
+  return ["exchange", "board", "custom"];
+};
 
 export default function BacktestView() {
   const { t, i18n } = useTranslation();
@@ -32,6 +50,8 @@ export default function BacktestView() {
   const [currency, setCurrency] = useState("USD");
   const [stocks, setStocks] = useState<any[]>([]);
   const [symbol, setSymbol] = useState("AAPL");
+  const [stockQuery, setStockQuery] = useState("");
+  const [effectiveQuery, setEffectiveQuery] = useState("");
 
   const [strategy, setStrategy] = useState("sma_crossover");
   const [years, setYears] = useState(5);
@@ -40,6 +60,7 @@ export default function BacktestView() {
   const [result, setResult] = useState<any>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [compareResult, setCompareResult] = useState<any>(null);
+  const searchSeqRef = useRef(0);
 
   // Filter state
   const [filterType, setFilterType] = useState<string>("");
@@ -50,6 +71,7 @@ export default function BacktestView() {
     exchanges: [],
     indices: [],
     market_cap_options: [],
+    boards: [],
   });
 
   // Fetch filter options and initial stocks
@@ -65,43 +87,86 @@ export default function BacktestView() {
     setFilterType("");
     setFilterValue("");
     setCustomSymbols("");
+    setStockQuery("");
+    setEffectiveQuery("");
     setResult(null);
+
     setCompareResult(null);
-    setCurrency(market === "US" ? "USD" : market === "CN" ? "CNY" : "HKD");
+    setCurrency(marketCurrency(market));
+    setSymbol(DEFAULT_SYMBOLS[market]);
+
     fetchFilters();
-    loadStocks();
   }, [market]);
 
-  const loadStocks = async () => {
+  const loadStocks = async (
+    query = "",
+    override?: {
+      filterType?: string;
+      filterValue?: string;
+    },
+  ) => {
+    const requestId = ++searchSeqRef.current;
     setStocksLoading(true);
     try {
-      const params: any = { limit: 100, market };
-      if (filterType && filterValue) {
-        params.filter_type = filterType;
-        params.filter_value = filterValue;
+      const params: any = {
+        limit: 500,
+        market,
+        search: query.trim() || undefined,
+      };
+      const activeFilterType = override?.filterType ?? filterType;
+      const activeFilterValue = override?.filterValue ?? filterValue;
+      if (activeFilterType && activeFilterValue) {
+        params.filter_type = activeFilterType;
+        params.filter_value = activeFilterValue;
       }
       const data = (await listStocks(params)) as any;
+      if (requestId !== searchSeqRef.current) return;
+
       setStocks(data.data || []);
-      setCurrency(data.currency || currency);
+      setEffectiveQuery(query);
+      setCurrency(data.currency || marketCurrency(market));
 
       if (
         data.data?.length > 0 &&
         !data.data.find((s: any) => s.symbol === symbol)
       ) {
         setSymbol(data.data[0].symbol);
+      } else if ((!data.data || data.data.length === 0) && !query.trim()) {
+        setSymbol(DEFAULT_SYMBOLS[market]);
       }
     } catch (e) {
+      if (requestId !== searchSeqRef.current) return;
       console.error("Failed to load stocks:", e);
+      setStocks([]);
+      setEffectiveQuery(query);
+      if (!query.trim()) {
+        setSymbol(DEFAULT_SYMBOLS[market]);
+      }
     } finally {
-      setStocksLoading(false);
+      if (requestId === searchSeqRef.current) {
+        setStocksLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    loadStocks("");
+  }, [market, filterType, filterValue]);
+
+  useEffect(() => {
+    const handler = window.setTimeout(() => {
+      if (stockQuery.trim() === effectiveQuery.trim()) return;
+      loadStocks(stockQuery);
+    }, 250);
+
+    return () => window.clearTimeout(handler);
+  }, [stockQuery, effectiveQuery, market, filterType, filterValue]);
 
   const applyFilter = () => {
     if (filterType === "custom") {
       loadCustomStocks();
     } else {
-      loadStocks();
+      loadStocks(stockQuery);
     }
   };
 
@@ -110,14 +175,25 @@ export default function BacktestView() {
     setStocksLoading(true);
     try {
       const data = (await listStocks({
-        limit: 100,
+        limit: 500,
         market,
+        search: stockQuery.trim() || undefined,
         filter_type: "custom",
         filter_value: customSymbols,
       })) as any;
       setStocks(data.data || []);
+      setEffectiveQuery(stockQuery);
+      setCurrency(data.currency || marketCurrency(market));
+      if (
+        data.data?.length > 0 &&
+        !data.data.find((s: any) => s.symbol === symbol)
+      ) {
+        setSymbol(data.data[0].symbol);
+      }
     } catch (e) {
       console.error("Failed to load custom stocks:", e);
+      setStocks([]);
+      setEffectiveQuery(stockQuery);
     } finally {
       setStocksLoading(false);
     }
@@ -130,10 +206,17 @@ export default function BacktestView() {
       market_cap: t("backtest.byMarketCap"),
       index: t("backtest.byIndex"),
       custom: t("backtest.custom"),
-      board: "Board",
+      board: t("backtest.byBoard"),
     };
     return labels[type] || type;
   };
+
+  const filteredStocks = stocks;
+
+  const selectedStock = useMemo(
+    () => stocks.find((s: any) => s.symbol === symbol),
+    [stocks, symbol],
+  );
 
   const run = async () => {
     setLoading(true);
@@ -142,13 +225,16 @@ export default function BacktestView() {
     try {
       if (compareMode) {
         const res = await compareStrategies({ symbol, years, market });
+        setCurrency((res as any)?.currency || marketCurrency(market));
 
         console.log("Compare result:", res);
         setCompareResult(res);
       } else {
         const res = await runBacktest({ symbol, strategy, years, market });
+        setCurrency((res as any)?.currency || marketCurrency(market));
 
         console.log("Backtest result:", res);
+
         setResult(res);
       }
     } catch (error: any) {
@@ -170,8 +256,12 @@ export default function BacktestView() {
 
   const formatMoney = (v: number) => {
     const prefix = currency === "USD" ? "$" : currency === "CNY" ? "¥" : "HK$";
-    return `${prefix}${(v || 0).toLocaleString()}`;
+    return `${prefix}${(v || 0).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+    })}`;
   };
+
+  const availableFilters = filterOptionsForMarket(market);
 
   const MetricCard = ({ label, value }: { label: string; value: string }) => (
     <div className="stat-card">
@@ -263,14 +353,28 @@ export default function BacktestView() {
                     }}
                   >
                     <option value="">{t("backtest.allStocks")}</option>
-                    <option value="sector">{t("backtest.bySector")}</option>
-                    <option value="exchange">{t("backtest.byExchange")}</option>
-                    <option value="market_cap">
-                      {t("backtest.byMarketCap")}
-                    </option>
-                    <option value="index">{t("backtest.byIndex")}</option>
-                    <option value="custom">{t("backtest.custom")}</option>
-                    {market !== "US" && <option value="board">Board</option>}
+                    {availableFilters.includes("sector") && (
+                      <option value="sector">{t("backtest.bySector")}</option>
+                    )}
+                    {availableFilters.includes("exchange") && (
+                      <option value="exchange">
+                        {t("backtest.byExchange")}
+                      </option>
+                    )}
+                    {availableFilters.includes("market_cap") && (
+                      <option value="market_cap">
+                        {t("backtest.byMarketCap")}
+                      </option>
+                    )}
+                    {availableFilters.includes("index") && (
+                      <option value="index">{t("backtest.byIndex")}</option>
+                    )}
+                    {availableFilters.includes("board") && (
+                      <option value="board">{t("backtest.byBoard")}</option>
+                    )}
+                    {availableFilters.includes("custom") && (
+                      <option value="custom">{t("backtest.custom")}</option>
+                    )}
                   </select>
                 </div>
 
@@ -304,11 +408,11 @@ export default function BacktestView() {
                     >
                       <option value="">
                         {filterType === "board"
-                          ? "Select Board"
+                          ? t("backtest.selectBoard")
                           : t("backtest.selectExchange")}
                       </option>
                       {(filterType === "board"
-                        ? (filterOptions as any).boards || []
+                        ? filterOptions.boards || []
                         : filterOptions.exchanges
                       ).map((e: string) => (
                         <option key={e} value={e}>
@@ -366,7 +470,13 @@ export default function BacktestView() {
                     <input
                       className="form-input"
                       style={{ fontSize: 13 }}
-                      placeholder={t("backtest.customPlaceholder")}
+                      placeholder={
+                        market === "US"
+                          ? t("backtest.customPlaceholder")
+                          : market === "CN"
+                            ? "SH.600519,SZ.000001"
+                            : "HK.00700,HK.09988"
+                      }
                       value={customSymbols}
                       onChange={(e) => setCustomSymbols(e.target.value)}
                     />
@@ -438,7 +548,7 @@ export default function BacktestView() {
                 >
                   {symbol}
                 </span>
-                {stocks.find((s) => s.symbol === symbol) && (
+                {selectedStock && (
                   <span
                     style={{
                       fontSize: 13,
@@ -446,7 +556,7 @@ export default function BacktestView() {
                       marginLeft: 8,
                     }}
                   >
-                    {stocks.find((s) => s.symbol === symbol)?.name}
+                    {selectedStock.name}
                   </span>
                 )}
               </div>
@@ -547,6 +657,29 @@ export default function BacktestView() {
               flexDirection: "column",
             }}
           >
+            <div
+              style={{
+                padding: "12px 12px 0",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="form-input"
+                  value={stockQuery}
+                  onChange={(e) => setStockQuery(e.target.value)}
+                  placeholder={t("stocks.searchPlaceholder")}
+                />
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={() => setStockQuery("")}
+                  disabled={!stockQuery}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  {t("common.clear")}
+                </button>
+              </div>
+            </div>
             <div className="table-scroll" style={{ flex: 1 }}>
               <table className="data-table">
                 <thead>
@@ -570,7 +703,7 @@ export default function BacktestView() {
                       </td>
                     </tr>
                   ) : (
-                    stocks.map((s) => (
+                    filteredStocks.map((s) => (
                       <tr
                         key={s.symbol}
                         onClick={() => setSymbol(s.symbol)}
@@ -616,7 +749,7 @@ export default function BacktestView() {
                       </tr>
                     ))
                   )}
-                  {stocks.length === 0 && !stocksLoading && (
+                  {filteredStocks.length === 0 && !stocksLoading && (
                     <tr>
                       <td
                         colSpan={2}
@@ -626,7 +759,14 @@ export default function BacktestView() {
                           padding: 20,
                         }}
                       >
-                        {t("common.noData")}
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                          {t("stocks.noMatch")}
+                        </div>
+                        <div style={{ fontSize: 12 }}>
+                          {effectiveQuery
+                            ? `“${effectiveQuery}”`
+                            : t("stocks.searchPlaceholder")}
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -641,7 +781,7 @@ export default function BacktestView() {
                 borderTop: "1px solid var(--border-color)",
               }}
             >
-              {stocks.length} {t("backtest.stocks")}
+              {filteredStocks.length} / {stocks.length} {t("backtest.stocks")}
             </div>
           </div>
         </div>

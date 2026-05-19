@@ -9,7 +9,8 @@ from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException
 
-from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, SECTOR_MAP
+from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, STOCK_NAMES, SECTOR_MAP
+
 from backend.crawlers.data_cleaner import USDataCleaner
 from backend.data_manager import DataManager
 from backend.market_data_manager import MarketDataManager
@@ -60,6 +61,23 @@ def _filter_market_stocks(stocks: list[dict], market: str, filter_type: Optional
     return stocks
 
 
+def _apply_text_search(stocks: list[dict], query: Optional[str]) -> list[dict]:
+    """按代码或名称进行文本搜索。"""
+    if not query:
+        return stocks
+    needle = query.strip().lower()
+    if not needle:
+        return stocks
+    return [
+        s for s in stocks
+        if needle in str(s.get("symbol") or "").lower()
+        or needle in str(s.get("name") or "").lower()
+    ]
+
+
+
+
+
 def _market_daily_payload(market: str, symbol: str, rows, source: str) -> dict:
     """构建 CN/HK daily 响应。"""
     df = market_mgr.rows_to_dataframe(rows)
@@ -99,8 +117,50 @@ EXCHANGE_MAP = {
 }
 
 
+def _static_us_stock_list() -> list[dict]:
+    """返回无需网络请求的美股基础列表，避免行情源限流导致列表页不可用。"""
+    nasdaq_symbols = set(EXCHANGE_MAP.get("NASDAQ", []))
+    return [
+        {
+            "symbol": symbol,
+            "name": STOCK_NAMES.get(symbol, symbol),
+            "exchange": "NASDAQ" if symbol in nasdaq_symbols else "NYSE",
+            "sector": SECTOR_MAP.get(symbol),
+            "price": None,
+            "change_pct": None,
+            "market_cap": None,
+            "pe_ratio": None,
+        }
+        for symbol in MAJOR_US_STOCKS
+    ]
+
+
+def _apply_us_filters(stocks: list[dict], filter_type: Optional[str], filter_value: Optional[str]) -> list[dict]:
+    """美股列表筛选。"""
+    if not filter_type or not filter_value:
+        return stocks
+    if filter_type == "sector":
+        return [s for s in stocks if s.get("sector") == filter_value]
+    if filter_type == "exchange":
+        exchange_stocks = set(EXCHANGE_MAP.get(filter_value, []))
+        return [s for s in stocks if s["symbol"] in exchange_stocks]
+    if filter_type == "market_cap":
+        limit_n = int(filter_value)
+        stocks_with_cap = [s for s in stocks if s.get("market_cap")]
+        stocks_with_cap.sort(key=lambda x: x.get("market_cap", 0), reverse=True)
+        return stocks_with_cap[:limit_n]
+    if filter_type == "index":
+        index_stocks = set(INDEX_CONSTITUENTS.get(filter_value, []))
+        return [s for s in stocks if s["symbol"] in index_stocks]
+    if filter_type == "custom":
+        custom_symbols = {s.strip().upper() for s in filter_value.split(",") if s.strip()}
+        return [s for s in stocks if s["symbol"] in custom_symbols]
+    return stocks
+
+
 @router.get("/filters")
 def get_filter_options(market: str = Query("US")):
+
     """获取筛选选项"""
     market_code = _api_market(market)
     if market_code != "US":
@@ -135,6 +195,7 @@ def list_stocks(
     offset: int = Query(0, ge=0),
     filter_type: Optional[str] = Query(None, description="筛选类型: sector|exchange|market_cap|index|custom|board"),
     filter_value: Optional[str] = Query(None, description="筛选值"),
+    search: Optional[str] = Query(None, description="按代码或名称搜索"),
     market: str = Query("US", description="市场: US|CN|HK"),
 ):
     """获取股票列表（支持 US/CN/HK）"""
@@ -142,6 +203,7 @@ def list_stocks(
     if market_code != "US":
         stocks = market_mgr.get_stock_list(market_code)
         stocks = _filter_market_stocks(stocks, market_code, filter_type, filter_value)
+        stocks = _apply_text_search(stocks, search)
         total = len(stocks)
         page = stocks[offset:offset + limit]
         return {
@@ -153,30 +215,27 @@ def list_stocks(
             "filter_value": filter_value,
         }
 
-    stocks = data_mgr.get_stock_list()
+    try:
+        stocks = data_mgr.get_stock_list()
+    except Exception as exc:
+        logger.warning("美股数据库列表读取失败，使用静态列表: %s", exc)
+        stocks = _static_us_stock_list()
 
-    
-    if filter_type and filter_value:
-        if filter_type == "sector":
-            stocks = [s for s in stocks if s.get("sector") == filter_value]
-        elif filter_type == "exchange":
-            exchange_stocks = EXCHANGE_MAP.get(filter_value, [])
-            stocks = [s for s in stocks if s["symbol"] in exchange_stocks]
-        elif filter_type == "market_cap":
-            limit_n = int(filter_value)
-            stocks_with_cap = [s for s in stocks if s.get("market_cap")]
-            stocks_with_cap.sort(key=lambda x: x.get("market_cap", 0), reverse=True)
-            stocks = stocks_with_cap[:limit_n]
-        elif filter_type == "index":
-            index_stocks = INDEX_CONSTITUENTS.get(filter_value, [])
-            stocks = [s for s in stocks if s["symbol"] in index_stocks]
-        elif filter_type == "custom":
-            custom_symbols = [s.strip().upper() for s in filter_value.split(",")]
-            stocks = [s for s in stocks if s["symbol"] in custom_symbols]
-    
-        total = len(stocks)
+    stocks = _apply_us_filters(stocks, filter_type, filter_value)
+    stocks = _apply_text_search(stocks, search)
+    total = len(stocks)
     page = stocks[offset:offset + limit]
-    return {"market": "US", "currency": "USD", "total": total, "data": page, "filter_type": filter_type, "filter_value": filter_value}
+    return {
+        "market": "US",
+        "currency": "USD",
+        "total": total,
+        "data": page,
+        "filter_type": filter_type,
+        "filter_value": filter_value,
+    }
+
+
+
 
 
 @router.get("/symbols")

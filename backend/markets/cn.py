@@ -28,6 +28,7 @@ CN_SAMPLE_STOCKS: list[dict[str, Any]] = [
     {"symbol": "SH.600036", "raw_symbol": "600036", "name": "招商银行", "exchange": "SH", "board": "主板", "industry": "银行"},
     {"symbol": "SH.601899", "raw_symbol": "601899", "name": "紫金矿业", "exchange": "SH", "board": "主板", "industry": "贵金属"},
     {"symbol": "SH.600276", "raw_symbol": "600276", "name": "恒瑞医药", "exchange": "SH", "board": "主板", "industry": "化学制药"},
+    {"symbol": "SH.600211", "raw_symbol": "600211", "name": "西藏药业", "exchange": "SH", "board": "主板", "industry": "生物制品"},
     {"symbol": "SH.600900", "raw_symbol": "600900", "name": "长江电力", "exchange": "SH", "board": "主板", "industry": "电力"},
     {"symbol": "SH.601088", "raw_symbol": "601088", "name": "中国神华", "exchange": "SH", "board": "主板", "industry": "煤炭"},
     {"symbol": "SH.600030", "raw_symbol": "600030", "name": "中信证券", "exchange": "SH", "board": "主板", "industry": "证券"},

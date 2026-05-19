@@ -1,6 +1,6 @@
 export default {
   app: {
-    title: "美股量化",
+    title: "多市场量化",
     subtitle: "股票分析与回测",
     version: "v1.0.0",
   },
@@ -14,13 +14,13 @@ export default {
   },
   dashboard: {
     title: "仪表盘",
-    usStocks: "美股数量",
+    usStocks: "股票数量",
     strategies: "策略数量",
     dataSource: "数据源",
     lastUpdate: "最后更新",
     quickStart: "快速开始",
     browseStocks: "浏览股票",
-    browseStocksDesc: "搜索和浏览美股数据",
+    browseStocksDesc: "搜索和浏览股票数据",
     runBacktest: "运行回测",
     runBacktestDesc: "测试策略历史表现",
     viewStrategies: "查看策略",
@@ -36,7 +36,7 @@ export default {
     clojureDsl: "Clojure DSL",
   },
   stocks: {
-    title: "美股列表",
+    title: "股票列表",
     loading: "加载股票中...",
     symbol: "代码",
     name: "名称",
@@ -55,7 +55,10 @@ export default {
     low: "最低",
     rsi: "RSI(14)",
     sma: "SMA(20)",
+    searchPlaceholder: "输入股票代码或名称筛选（如 AAPL / Apple）",
+    noMatch: "没有匹配的股票，请尝试其他代码或名称",
   },
+
   backtest: {
     title: "回测引擎",
     symbol: "股票代码",
@@ -84,6 +87,7 @@ export default {
     tradeCount: "笔交易",
     side: "方向",
     qty: "数量",
+    price: "价格",
     pnl: "盈亏",
     tag: "标签",
     runBacktestPrompt: "运行回测",
@@ -95,11 +99,13 @@ export default {
     allStocks: "全部股票",
     bySector: "按板块",
     byExchange: "按交易所",
+    byBoard: "按板块/市场层级",
     byMarketCap: "按市值",
     byIndex: "按指数",
     custom: "自定义",
     selectSector: "选择板块",
     selectExchange: "选择交易所",
+    selectBoard: "选择板块/层级",
     selectTop: "选择Top",
     selectIndex: "选择指数",
     customPlaceholder: "AAPL,MSFT,GOOGL",
@@ -130,5 +136,6 @@ export default {
     applyFilter: "筛选",
     market: "市场",
     noData: "暂无数据",
+    clear: "清空",
   },
 };

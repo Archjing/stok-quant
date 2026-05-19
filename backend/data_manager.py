@@ -165,25 +165,28 @@ class DataManager:
         logger.debug(f"延迟 {total:.1f} 秒...")
         time.sleep(total)
 
-    # ==========================================================
-    # 1. 股票列表 + 实时价格（懒加载 + 缓存）
-    # ==========================================================
     def get_stock_list(self) -> List[Dict[str, Any]]:
         """获取股票列表（自动判断是否需要刷新价格）"""
         self._ensure_stocks_seeded()
         if self._price_cache_stale():
-            self.refresh_stock_prices()
+            try:
+                self.refresh_stock_prices()
+            except Exception as exc:
+                logger.warning("刷新股票价格失败，返回已有/静态股票列表: %s", exc)
         return self._read_stock_list_from_db()
+
+
+
 
     def _ensure_stocks_seeded(self):
         """确保 us_stocks 表有基础记录"""
         session = SessionLocal()
         try:
-            count = session.query(USStock).count()
-            if count > 0:
-                return
-            # 首次种子化
+            existing_symbols = {symbol for (symbol,) in session.query(USStock.symbol).all()}
+            created = 0
             for sym in MAJOR_US_STOCKS:
+                if sym in existing_symbols:
+                    continue
                 session.add(USStock(
                     symbol=sym,
                     name=STOCK_NAMES.get(sym, sym),
@@ -193,10 +196,13 @@ class DataManager:
                         "ADBE", "AMD", "INTC", "NFLX", "PYPL", "BIDU", "PDD",
                     } else "NYSE",
                 ))
-            session.commit()
-            logger.info(f"us_stocks 表种子化完成: {len(MAJOR_US_STOCKS)} 条")
+                created += 1
+            if created:
+                session.commit()
+                logger.info(f"us_stocks 表种子化补充完成: {created} 条")
         finally:
             session.close()
+
 
     def _price_cache_stale(self) -> bool:
         """判断价格缓存是否过期"""

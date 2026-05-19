@@ -68,10 +68,23 @@ const calculateTickConfig = (
   }
 };
 
+const getCurrencyForMarket = (market: MarketCode) =>
+  MARKETS.find((m) => m.code === market)?.currency || "USD";
+
+const sourceLabel = (source: string) => {
+  if (source === "db") return "DB";
+  if (source === "yfinance") return "Yahoo";
+  if (source === "akshare") return "AkShare";
+  if (source === "error") return "Error";
+  return source || "-";
+};
+
 export default function StockList() {
   const { t } = useTranslation();
   const [stocks, setStocks] = useState<any[]>([]);
+  const [stockQuery, setStockQuery] = useState("");
   const [market, setMarket] = useState<MarketCode>("US");
+
   const [currency, setCurrency] = useState("USD");
   const [loading, setLoading] = useState(true);
 
@@ -99,7 +112,23 @@ export default function StockList() {
     [currency],
   );
 
+  const selectedStock = useMemo(
+    () => stocks.find((s: any) => s.symbol === selected),
+    [stocks, selected],
+  );
+
+  const filteredStocks = useMemo(() => {
+    const query = stockQuery.trim().toLowerCase();
+    if (!query) return stocks;
+    return stocks.filter((s: any) => {
+      const symbol = String(s.symbol || "").toLowerCase();
+      const name = String(s.name || "").toLowerCase();
+      return symbol.includes(query) || name.includes(query);
+    });
+  }, [stocks, stockQuery]);
+
   // 初始加载 - 限制数量，加快首屏
+
   useEffect(() => {
     setLoading(true);
     setSelected(null);
@@ -107,14 +136,14 @@ export default function StockList() {
     setDetail(null);
     setKlineData([]);
     setKlineSource("");
-    listStocks({ limit: 50, market })
+    setStockQuery("");
+    setCurrency(getCurrencyForMarket(market));
+    listStocks({ limit: 500, market })
       .then((res: any) => {
         setStocks(res?.data || []);
-        setCurrency(
-          res?.currency ||
-            (market === "US" ? "USD" : market === "CN" ? "CNY" : "HKD"),
-        );
+        setCurrency(res?.currency || getCurrencyForMarket(market));
       })
+
       .finally(() => setLoading(false));
   }, [market]);
 
@@ -141,7 +170,9 @@ export default function StockList() {
       getStockDaily(symbol, { years: 1, indicators: true, market }),
     ]);
     const d = dailyRes as any;
+    setCurrency(d?.currency || getCurrencyForMarket(market));
     setDaily(d?.data?.slice(-60).reverse() || []);
+
     setDetail(d);
 
     loadKlineData(symbol, "daily");
@@ -156,7 +187,9 @@ export default function StockList() {
         market,
       })) as any;
 
+      setCurrency(res?.currency || getCurrencyForMarket(market));
       setKlineData(res?.data || []);
+
       setKlineSource(res?.source || "");
     } catch (err) {
       console.error("K线数据加载失败:", err);
@@ -174,7 +207,7 @@ export default function StockList() {
         loadKlineData(selected, period);
       }
     },
-    [selected, market],
+    [selected, market, loadKlineData],
   );
 
   // 计算 Y 轴范围（撑满 95%，留 2.5% 边距）
@@ -298,7 +331,7 @@ export default function StockList() {
       dataLabels: { enabled: false },
       stroke: { curve: "smooth" as const, width: 1 },
     };
-  }, [chartHeight, yaxisRange, klinePeriod, formatMoney]);
+  }, [chartHeight, yaxisRange, klinePeriod, klineData, t, formatMoney]);
 
   // Memoized Chart 组件
   const MemoizedChart = useMemo(
@@ -316,7 +349,16 @@ export default function StockList() {
   if (loading) return <div className="loading">{t("stocks.loading")}</div>;
 
   return (
-    <div style={{ display: "flex", gap: 20, flex: 1, padding: 24 }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 20,
+        flex: 1,
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
       {/* Stock list */}
       <div
         style={{
@@ -324,6 +366,7 @@ export default function StockList() {
           maxWidth: 400,
           display: "flex",
           flexDirection: "column",
+          minHeight: 0,
         }}
       >
         <div
@@ -359,7 +402,24 @@ export default function StockList() {
             </select>
           </div>
 
-          <div className="table-scroll" style={{ flex: 1 }}>
+          <div
+            style={{
+              padding: "0 20px 12px",
+              borderBottom: "1px solid var(--border-light)",
+            }}
+          >
+            <input
+              className="form-input"
+              value={stockQuery}
+              onChange={(e) => setStockQuery(e.target.value)}
+              placeholder={t("stocks.searchPlaceholder")}
+            />
+          </div>
+
+          <div
+            className="table-scroll"
+            style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+          >
             <table className="data-table">
               <thead>
                 <tr>
@@ -369,7 +429,7 @@ export default function StockList() {
                 </tr>
               </thead>
               <tbody>
-                {stocks.map((s: any) => (
+                {filteredStocks.map((s: any) => (
                   <tr
                     key={s.symbol}
                     onClick={() => selectStock(s.symbol)}
@@ -437,7 +497,7 @@ export default function StockList() {
             <div
               className="stats-grid"
               style={{
-                gridTemplateColumns: "1fr 1fr 1fr 2fr",
+                gridTemplateColumns: "1fr 1.8fr 1fr 1fr 2fr",
                 marginBottom: 16,
               }}
             >
@@ -446,7 +506,23 @@ export default function StockList() {
                 <div className="stat-value accent">{selected}</div>
               </div>
               <div className="stat-card">
+                <div className="stat-label">{t("stocks.name")}</div>
+                <div
+                  className="stat-value"
+                  style={{
+                    fontSize: 18,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={selectedStock?.name || detail?.name || selected || ""}
+                >
+                  {selectedStock?.name || detail?.name || "-"}
+                </div>
+              </div>
+              <div className="stat-card">
                 <div className="stat-label">{t("stocks.close")}</div>
+
                 <div className="stat-value">
                   {daily.length > 0
                     ? formatMoney(daily[daily.length - 1]?.close)
@@ -558,24 +634,9 @@ export default function StockList() {
                     </div>
                   )}
 
-                  {/* 日期级别指示器 */}
-                  {chartType === "kline" && klineData.length > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {klineSource === "db"
-                        ? "📦 DB"
-                        : klineSource === "yfinance"
-                          ? "📡 网络"
-                          : "-"}
-                    </span>
-                  )}
-
                   {chartType === "kline" && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {klineSource === "db"
-                        ? "📦 DB"
-                        : klineSource === "yfinance"
-                          ? "📡 网络"
-                          : "-"}
+                      {sourceLabel(klineSource)}
                     </span>
                   )}
                 </div>
@@ -586,6 +647,8 @@ export default function StockList() {
                 className="table-scroll"
                 style={{
                   flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
                   display: chartType === "table" ? "block" : "none",
                 }}
               >
@@ -647,7 +710,7 @@ export default function StockList() {
                       height: chartHeight,
                     }}
                   >
-                    <span>加载中...</span>
+                    <span>{t("common.loading")}</span>
                   </div>
                 ) : klineData.length > 0 ? (
                   MemoizedChart
@@ -660,7 +723,7 @@ export default function StockList() {
                       height: chartHeight,
                     }}
                   >
-                    <span>暂无数据</span>
+                    <span>{t("common.noData")}</span>
                   </div>
                 )}
               </div>

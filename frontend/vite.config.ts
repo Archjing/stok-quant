@@ -23,11 +23,33 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-react": ["react", "react-dom", "react-router-dom"],
-          "vendor-i18n": ["i18next", "react-i18next"],
-          "vendor-charts": ["recharts", "apexcharts", "react-apexcharts"],
-          "vendor-utils": ["axios", "dayjs", "lucide-react"],
+        manualChunks: (id: string) => {
+          if (!id.includes("node_modules")) return undefined;
+          if (
+            id.includes("react") ||
+            id.includes("react-dom") ||
+            id.includes("react-router-dom")
+          ) {
+            return "vendor-react";
+          }
+          if (id.includes("i18next") || id.includes("react-i18next")) {
+            return "vendor-i18n";
+          }
+          if (
+            id.includes("recharts") ||
+            id.includes("apexcharts") ||
+            id.includes("react-apexcharts")
+          ) {
+            return "vendor-charts";
+          }
+          if (
+            id.includes("axios") ||
+            id.includes("dayjs") ||
+            id.includes("lucide-react")
+          ) {
+            return "vendor-utils";
+          }
+          return "vendor";
         },
       },
     },

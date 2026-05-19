@@ -25,3 +25,8 @@ dependencies = [
   "loguru>=0.7.0",
   "akshare>=1.18.62",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

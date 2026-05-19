@@ -1,22 +1,100 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import { useTranslation } from "react-i18next";
 import { Activity } from "lucide-react";
-import { getStockDaily, MARKETS, type MarketCode } from "../api";
+import { getStockDaily, listStocks, MARKETS, type MarketCode } from "../api";
 
-const MARKET_SYMBOLS: Record<MarketCode, string[]> = {
-  US: ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY"],
-  CN: ["SH.600519", "SZ.000001", "SZ.300750", "SH.601318"],
-  HK: ["HK.00700", "HK.09988", "HK.00005", "HK.00388"],
+const DEFAULT_SYMBOLS: Record<MarketCode, string> = {
+  US: "AAPL",
+  CN: "SH.600519",
+  HK: "HK.00700",
 };
+
+const getCurrencyForMarket = (market: MarketCode) =>
+  MARKETS.find((m) => m.code === market)?.currency || "USD";
 
 export default function AnalysisView() {
   const { t } = useTranslation();
   const [market, setMarket] = useState<MarketCode>("US");
   const [symbol, setSymbol] = useState("AAPL");
   const [currency, setCurrency] = useState("USD");
+  const [stocks, setStocks] = useState<any[]>([]);
+  const [stockQuery, setStockQuery] = useState("");
+  const [effectiveQuery, setEffectiveQuery] = useState("");
+  const [stocksLoading, setStocksLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any[]>([]);
+  const searchSeqRef = useRef(0);
+
+  const loadStocks = async (query = "") => {
+    const requestId = ++searchSeqRef.current;
+    setStocksLoading(true);
+    setCurrency(getCurrencyForMarket(market));
+
+    try {
+      const res = (await listStocks({
+        limit: 500,
+        market,
+        search: query.trim() || undefined,
+      })) as any;
+      if (requestId !== searchSeqRef.current) return;
+
+      const nextStocks = res?.data || [];
+      setStocks(nextStocks);
+      setEffectiveQuery(query);
+      setCurrency(res?.currency || getCurrencyForMarket(market));
+
+      if (nextStocks.length > 0) {
+        const fallback = nextStocks.find(
+          (s: any) => s.symbol === DEFAULT_SYMBOLS[market],
+        );
+        setSymbol((current) => {
+          if (nextStocks.some((s: any) => s.symbol === current)) {
+            return current;
+          }
+          return fallback?.symbol || nextStocks[0].symbol;
+        });
+      } else if (!query.trim()) {
+        setSymbol(DEFAULT_SYMBOLS[market]);
+      }
+    } catch (error) {
+      if (requestId !== searchSeqRef.current) return;
+      console.error("Failed to load analysis stocks:", error);
+      setStocks([]);
+      setEffectiveQuery(query);
+      if (!query.trim()) {
+        setSymbol(DEFAULT_SYMBOLS[market]);
+      }
+    } finally {
+      if (requestId === searchSeqRef.current) {
+        setStocksLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    setStockQuery("");
+    setEffectiveQuery("");
+    setData([]);
+    loadStocks("");
+  }, [market]);
+
+  useEffect(() => {
+    const handler = window.setTimeout(() => {
+      if (stockQuery.trim() === effectiveQuery.trim()) return;
+      loadStocks(stockQuery);
+    }, 250);
+
+    return () => window.clearTimeout(handler);
+  }, [stockQuery, effectiveQuery, market]);
+
+  const filteredStocks = stocks;
+
+  const selectedStock = useMemo(
+    () => stocks.find((s: any) => s.symbol === symbol),
+    [stocks, symbol],
+  );
 
   const formatMoney = (value?: number) => {
     if (value == null || Number.isNaN(value)) return "-";
@@ -26,14 +104,23 @@ export default function AnalysisView() {
 
   const loadData = async () => {
     setLoading(true);
-    const res = (await getStockDaily(symbol, {
-      years: 2,
-      indicators: true,
-      market,
-    })) as any;
-    setCurrency(res?.currency || currency);
-    setData(res?.data?.slice(-120).reverse() || []);
-    setLoading(false);
+    try {
+      const normalizedSymbol = selectedStock?.symbol || symbol;
+      const res = (await getStockDaily(normalizedSymbol, {
+        years: 2,
+        indicators: true,
+        market,
+      })) as any;
+      setSymbol(res?.symbol || normalizedSymbol);
+      setCurrency(res?.currency || getCurrencyForMarket(market));
+      setData(res?.data?.slice(-120).reverse() || []);
+    } catch (error) {
+      console.error("Failed to load analysis data:", error);
+      setData([]);
+      alert(`加载分析失败: ${symbol}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const latest = data[data.length - 1] || {};
@@ -108,15 +195,7 @@ export default function AnalysisView() {
             <select
               className="form-select"
               value={market}
-              onChange={(e) => {
-                const next = e.target.value as MarketCode;
-                setMarket(next);
-                setCurrency(
-                  next === "US" ? "USD" : next === "CN" ? "CNY" : "HKD",
-                );
-                setSymbol(MARKET_SYMBOLS[next][0]);
-                setData([]);
-              }}
+              onChange={(e) => setMarket(e.target.value as MarketCode)}
             >
               {MARKETS.map((m) => (
                 <option key={m.code} value={m.code}>
@@ -125,18 +204,48 @@ export default function AnalysisView() {
               ))}
             </select>
           </div>
-          <div className="form-group" style={{ minWidth: 140 }}>
+          <div className="form-group" style={{ minWidth: 260, flex: 1 }}>
             <label className="form-label">{t("stocks.symbol")}</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="form-input"
+                value={stockQuery}
+                onChange={(e) => setStockQuery(e.target.value)}
+                placeholder={t("stocks.searchPlaceholder")}
+              />
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => setStockQuery("")}
+                disabled={!stockQuery}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                {t("common.clear")}
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group" style={{ minWidth: 220 }}>
+            <label className="form-label">{t("stocks.selectStock")}</label>
             <select
               className="form-select"
-              value={symbol}
+              value={
+                filteredStocks.some((s: any) => s.symbol === symbol)
+                  ? symbol
+                  : ""
+              }
               onChange={(e) => setSymbol(e.target.value)}
+              disabled={stocksLoading || filteredStocks.length === 0}
             >
-              {MARKET_SYMBOLS[market].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              {filteredStocks.length === 0 ? (
+                <option value="">{t("stocks.noMatch")}</option>
+              ) : (
+                filteredStocks.map((s: any) => (
+                  <option key={s.symbol} value={s.symbol}>
+                    {s.symbol} {s.name ? `- ${s.name}` : ""}
+                  </option>
+                ))
+              )}
             </select>
           </div>
           <div className="form-group">
@@ -144,12 +253,49 @@ export default function AnalysisView() {
             <button
               className="btn btn-primary"
               onClick={loadData}
-              disabled={loading}
+              disabled={loading || stocksLoading || !symbol}
             >
               {loading ? t("common.loading") : t("analysis.loadAnalysis")}
             </button>
           </div>
         </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 12,
+            color: "var(--text-muted)",
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            {t("backtest.selectedStock")}: <strong>{symbol || "-"}</strong>
+          </span>
+          <span>{selectedStock?.name || "-"}</span>
+          <span>
+            {filteredStocks.length}/{stocks.length}
+          </span>
+        </div>
+
+        {effectiveQuery && filteredStocks.length === 0 && !stocksLoading && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 8,
+              background: "var(--bg-secondary)",
+              color: "var(--text-muted)",
+              fontSize: 13,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              {t("stocks.noMatch")}
+            </div>
+            <div>“{effectiveQuery}”</div>
+          </div>
+        )}
       </div>
 
       {data.length > 0 && (
