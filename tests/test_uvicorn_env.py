@@ -3,6 +3,12 @@ import sys
 import os
 from pathlib import Path
 
+# 动态获取项目根目录
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+os.chdir(_project_root)
+
 # 模拟 uvicorn "python -m uvicorn backend.main:app" 启动
 # uvicorn 会把启动命令的目录作为工作目录
 
@@ -20,8 +26,6 @@ print(f"\n2. sys.path[0] (first entry): {sys.path[0] if sys.path else 'empty'}")
 # 如果 uvicorn 从 backend/ 目录启动，__file__ 会指向错误位置
 # 但实际应该是从项目根目录启动
 
-# 4. 检查 backend/config.py 的 BASE_DIR
-sys.path.insert(0, 'd:/ZJ/Dev/Python_Projects/014_stock-us')
 from backend.config import get_settings
 settings = get_settings()
 print(f"\n3. Config db_path: {settings.db_path}")

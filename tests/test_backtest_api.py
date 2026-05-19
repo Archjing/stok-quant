@@ -1,12 +1,16 @@
 """模拟后端环境测试"""
 import sys
 import os
-# 模拟后端启动时的工作目录
-os.chdir('d:/ZJ/Dev/Python_Projects/014_stock-us')
-sys.path.insert(0, 'd:/ZJ/Dev/Python_Projects/014_stock-us')
+from pathlib import Path
+
+# 动态获取项目根目录
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+os.chdir(_project_root)
 
 print(f"Working dir: {os.getcwd()}")
-print(f"DB path: d:/ZJ/Dev/Python_Projects/014_stock-us/data/us_stocks.db")
+print(f"DB path: {os.path.abspath('data/us_stocks.db')}")
 print(f"DB exists: {os.path.exists('data/us_stocks.db')}")
 
 # 测试导入

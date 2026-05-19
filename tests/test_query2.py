@@ -1,5 +1,13 @@
+"""测试 DataManager"""
 import sys
-sys.path.insert(0, 'd:/ZJ/Dev/Python_Projects/014_stock-us')
+import os
+from pathlib import Path
+
+# 动态获取项目根目录
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+os.chdir(_project_root)
 
 from backend.database import SessionLocal
 from backend.models.stock import USStockDaily

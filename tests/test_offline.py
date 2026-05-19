@@ -1,8 +1,13 @@
 """测试离线场景 - 模拟断网时的数据库查询"""
 import sys
 import os
-os.chdir('d:/ZJ/Dev/Python_Projects/014_stock-us')
-sys.path.insert(0, 'd:/ZJ/Dev/Python_Projects/014_stock-us')
+from pathlib import Path
+
+# 动态获取项目根目录
+_project_root = Path(__file__).parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+os.chdir(_project_root)
 
 print("测试环境:")
 print(f"  工作目录: {os.getcwd()}")
