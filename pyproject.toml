@@ -23,4 +23,5 @@ dependencies = [
   "dash>=2.18.0",
   "rich>=13.9.0",
   "loguru>=0.7.0",
+  "akshare>=1.18.62",
 ]

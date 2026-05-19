@@ -1,5 +1,8 @@
+
 """
-美股数据 API
+股票数据 API
+
+默认 market=US 保持原美股行为；CN/HK 走多市场 MarketDataManager。
 """
 import logging
 from typing import Optional
@@ -9,11 +12,17 @@ from fastapi import APIRouter, Query, HTTPException
 from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, SECTOR_MAP
 from backend.crawlers.data_cleaner import USDataCleaner
 from backend.data_manager import DataManager
+from backend.market_data_manager import MarketDataManager
+from backend.markets.registry import get_market_source
+from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
+
 
 router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 logger = logging.getLogger(__name__)
 data_source = USStockSource()
 data_mgr = DataManager(request_delay=0.6)
+market_mgr = MarketDataManager(request_delay=0.6)
+
 
 
 def date_to_timestamp(d) -> int:
@@ -27,6 +36,44 @@ def date_to_timestamp(d) -> int:
     else:
         dt = datetime.combine(d, datetime.min.time())
     return int(dt.timestamp() * 1000)
+
+
+def _api_market(market: str) -> str:
+    """标准化 API market 参数。"""
+    try:
+        return normalize_market(market)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+def _filter_market_stocks(stocks: list[dict], market: str, filter_type: Optional[str], filter_value: Optional[str]) -> list[dict]:
+    """CN/HK 通用列表筛选。第一阶段支持 exchange/board/custom。"""
+    if not filter_type or not filter_value:
+        return stocks
+    if filter_type == "exchange":
+        return [s for s in stocks if s.get("exchange") == filter_value]
+    if filter_type == "board":
+        return [s for s in stocks if s.get("board") == filter_value]
+    if filter_type == "custom":
+        symbols = {normalize_symbol(s.strip(), market) for s in filter_value.split(",") if s.strip()}
+        return [s for s in stocks if s.get("symbol") in symbols]
+    return stocks
+
+
+def _market_daily_payload(market: str, symbol: str, rows, source: str) -> dict:
+    """构建 CN/HK daily 响应。"""
+    df = market_mgr.rows_to_dataframe(rows)
+    return {
+        "market": market,
+        "currency": get_currency(market),
+        "symbol": symbol,
+        "total": len(df),
+        "start_date": str(df["date"].iloc[0]) if not df.empty else None,
+        "end_date": str(df["date"].iloc[-1]) if not df.empty else None,
+        "source": source,
+        "data": df.fillna("").to_dict(orient="records"),
+    }
+
 
 # 指数成分映射
 INDEX_CONSTITUENTS = {
@@ -53,8 +100,21 @@ EXCHANGE_MAP = {
 
 
 @router.get("/filters")
-def get_filter_options():
+def get_filter_options(market: str = Query("US")):
     """获取筛选选项"""
+    market_code = _api_market(market)
+    if market_code != "US":
+        stocks = market_mgr.get_stock_list(market_code)
+        exchanges = sorted({s.get("exchange") for s in stocks if s.get("exchange")})
+        boards = sorted({s.get("board") for s in stocks if s.get("board")})
+        return {
+            "sectors": [],
+            "exchanges": exchanges,
+            "indices": [],
+            "boards": boards,
+            "market_cap_options": [],
+        }
+
     sectors = list(set(SECTOR_MAP.values()))
     sectors = [s for s in sectors if s]
     sectors.sort()
@@ -68,15 +128,33 @@ def get_filter_options():
     }
 
 
+
 @router.get("/")
 def list_stocks(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    filter_type: Optional[str] = Query(None, description="筛选类型: sector|exchange|market_cap|index|custom"),
+    filter_type: Optional[str] = Query(None, description="筛选类型: sector|exchange|market_cap|index|custom|board"),
     filter_value: Optional[str] = Query(None, description="筛选值"),
+    market: str = Query("US", description="市场: US|CN|HK"),
 ):
-    """获取美股列表（支持多种筛选方式）"""
+    """获取股票列表（支持 US/CN/HK）"""
+    market_code = _api_market(market)
+    if market_code != "US":
+        stocks = market_mgr.get_stock_list(market_code)
+        stocks = _filter_market_stocks(stocks, market_code, filter_type, filter_value)
+        total = len(stocks)
+        page = stocks[offset:offset + limit]
+        return {
+            "market": market_code,
+            "currency": get_currency(market_code),
+            "total": total,
+            "data": page,
+            "filter_type": filter_type,
+            "filter_value": filter_value,
+        }
+
     stocks = data_mgr.get_stock_list()
+
     
     if filter_type and filter_value:
         if filter_type == "sector":
@@ -96,15 +174,21 @@ def list_stocks(
             custom_symbols = [s.strip().upper() for s in filter_value.split(",")]
             stocks = [s for s in stocks if s["symbol"] in custom_symbols]
     
-    total = len(stocks)
+        total = len(stocks)
     page = stocks[offset:offset + limit]
-    return {"total": total, "data": page, "filter_type": filter_type, "filter_value": filter_value}
+    return {"market": "US", "currency": "USD", "total": total, "data": page, "filter_type": filter_type, "filter_value": filter_value}
 
 
 @router.get("/symbols")
-def get_symbols():
+def get_symbols(market: str = Query("US", description="市场: US|CN|HK")):
     """获取所有支持的股票代码"""
-    return {"symbols": MAJOR_US_STOCKS, "total": len(MAJOR_US_STOCKS)}
+    market_code = _api_market(market)
+    if market_code != "US":
+        stocks = market_mgr.get_stock_list(market_code)
+        symbols = [s["symbol"] for s in stocks]
+        return {"market": market_code, "symbols": symbols, "total": len(symbols)}
+    return {"market": "US", "symbols": MAJOR_US_STOCKS, "total": len(MAJOR_US_STOCKS)}
+
 
 
 # ============ 带 symbol 路径的路由必须放在 /{symbol} 通用路由之前 ============
@@ -114,9 +198,26 @@ def get_stock_daily(
     symbol: str,
     years: int = Query(5, ge=1, le=30),
     indicators: bool = Query(False),
+    market: str = Query("US", description="市场: US|CN|HK"),
 ):
-    """获取日线数据（优先从数据库缓存读取，不足时实时从 yfinance 获取）"""
+    """获取日线数据（US 保持旧逻辑；CN/HK 使用 MarketDataManager）"""
+    market_code = _api_market(market)
+    if market_code != "US":
+        sym = normalize_symbol(symbol, market_code)
+        db_rows = market_mgr.get_daily_from_db(market_code, sym, years=years)
+        source = "db"
+        if not db_rows:
+            ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=years)
+            if not ok:
+                raise HTTPException(404, f"股票 {symbol} 无日线数据: {err}")
+            db_rows = market_mgr.get_daily_from_db(market_code, sym, years=years)
+            source = "akshare"
+        if not db_rows:
+            raise HTTPException(404, f"股票 {symbol} 无日线数据")
+        return _market_daily_payload(market_code, sym, db_rows, source)
+
     sym = symbol.upper()
+
 
     db_rows = data_mgr.get_daily_from_db(sym, years=years)
     if db_rows:
@@ -167,13 +268,72 @@ def get_stock_kline(
     symbol: str,
     period: str = Query("daily", description="周期: daily|monthly|yearly"),
     years: int = Query(5, ge=1, le=30),
+    market: str = Query("US", description="市场: US|CN|HK"),
 ):
     """
     获取 K 线数据（支持日线、月线、年线）
     用于前端 K 线图展示
     数据格式：{"x": 毫秒时间戳, "y": [open, high, low, close]}
     """
+    market_code = _api_market(market)
+    if period not in {"daily", "monthly", "yearly"}:
+        raise HTTPException(400, "period 仅支持 daily|monthly|yearly")
+
+    if market_code != "US":
+        import pandas as pd
+        sym = normalize_symbol(symbol, market_code)
+        query_years = max(years, 10) if period == "yearly" else years
+        db_rows = market_mgr.get_daily_from_db(market_code, sym, years=query_years)
+        source_label = "db"
+        if not db_rows:
+            ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=query_years)
+            if not ok:
+                raise HTTPException(404, f"股票 {symbol} K线数据获取失败: {err}")
+            db_rows = market_mgr.get_daily_from_db(market_code, sym, years=query_years)
+            source_label = "akshare"
+        if not db_rows:
+            raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
+
+        df = market_mgr.rows_to_dataframe(db_rows)
+        if period == "daily":
+            return {
+                "market": market_code,
+                "currency": get_currency(market_code),
+                "symbol": sym,
+                "period": "daily",
+                "source": source_label,
+                "data": [
+                    {"x": date_to_timestamp(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
+                    for r in df.to_dict(orient="records")
+                ],
+            }
+
+        freq = "M" if period == "monthly" else "Y"
+        df["date"] = pd.to_datetime(df["date"])
+        df["period"] = df["date"].dt.to_period(freq)
+        data = []
+        for _, group in df.groupby("period"):
+            row = group.iloc[0]
+            data.append({
+                "x": int(row["date"].timestamp() * 1000),
+                "y": [
+                    float(group["open"].iloc[0]),
+                    float(group["high"].max()),
+                    float(group["low"].min()),
+                    float(group["close"].iloc[-1]),
+                ],
+            })
+        return {
+            "market": market_code,
+            "currency": get_currency(market_code),
+            "symbol": sym,
+            "period": period,
+            "source": source_label,
+            "data": data,
+        }
+
     sym = symbol.upper()
+
 
     if period == "daily":
         db_rows = data_mgr.get_daily_from_db(sym, years=years)
@@ -246,22 +406,38 @@ def get_stock_kline(
 
 
 @router.get("/{symbol}/financials")
-def get_stock_financials(symbol: str):
+def get_stock_financials(symbol: str, market: str = Query("US", description="市场: US|CN|HK")):
     """获取财务数据"""
+    market_code = _api_market(market)
+    if market_code != "US":
+        source = get_market_source(market_code)
+        sym = normalize_symbol(symbol, market_code)
+        info = source.get_stock_info(sym)
+        return {"market": market_code, "currency": get_currency(market_code), "symbol": sym, "info": info, "financials": {}}
     financials = data_source.get_financials(symbol.upper())
     info = data_source.get_stock_info(symbol.upper())
-    return {"symbol": symbol.upper(), "info": info, "financials": financials}
+    return {"market": "US", "currency": "USD", "symbol": symbol.upper(), "info": info, "financials": financials}
+
 
 
 # ============ 通用路由放在最后 ============
 
 @router.get("/{symbol}")
-def get_stock_detail(symbol: str):
+def get_stock_detail(symbol: str, market: str = Query("US", description="市场: US|CN|HK")):
     """获取股票详情"""
+    market_code = _api_market(market)
+    if market_code != "US":
+        source = get_market_source(market_code)
+        sym = normalize_symbol(symbol, market_code)
+        info = source.get_stock_info(sym)
+        if not info:
+            raise HTTPException(404, f"股票 {symbol} 未找到")
+        return info
     info = data_source.get_stock_info(symbol.upper())
     if not info:
         raise HTTPException(404, f"股票 {symbol} 未找到")
     return info
+
 
 
 @router.get("/sectors/list")
