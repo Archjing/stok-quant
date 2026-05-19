@@ -29,7 +29,7 @@
 
 ### 环境要求
 
-- Python 3.10+
+- Python 3.12+
 - Node.js 18+
 - npm
 - 可选：Docker / Docker Compose
@@ -37,10 +37,13 @@
 ### 安装
 
 ```bash
-# 1. 安装后端依赖
-pip install -r requirements.txt
+# 1. 安装/确认 uv
+uv --version
 
-# 2. 安装前端依赖
+# 2. 同步 Python 依赖（会自动创建 .venv）
+uv sync
+
+# 3. 安装前端依赖
 cd frontend
 npm install
 ```
@@ -51,7 +54,7 @@ npm install
 
 ```bash
 # 终端1：启动后端
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8777
+uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8777
 
 # 终端2：启动前端
 cd frontend
@@ -100,10 +103,11 @@ docker-compose up --build
 ├── clj/                        # Clojure 回测 DSL 示例
 ├── data/                       # SQLite 数据库与本地数据
 ├── tests/                      # 测试代码
-├── Dockerfile                  # 后端镜像构建文件
+├── pyproject.toml              # uv / Python 项目配置
+├── uv.lock                     # uv 锁定文件
 ├── Dockerfile.frontend         # 前端镜像构建文件
 ├── docker-compose.yml          # 容器编排配置
-├── requirements.txt            # Python 依赖
+├── Dockerfile                  # 后端镜像构建文件
 └── config.yaml                 # 项目配置文件
 ```
 

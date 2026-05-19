@@ -58,5 +58,8 @@ _be.log
 _scan.txt
 _issues.txt
 
+# uv
+.uv-cache/
+
 # Dev tools (not project source code)
 devtools/

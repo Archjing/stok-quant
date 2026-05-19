@@ -1,5 +1,7 @@
 #!/bin/sh
-# US Stock Quant - 后端启动脚本 (Alpine Linux)
+# US Stock Quant - 后端启动脚本
+
+set -e
 
 echo "============================================"
 echo "  US Stock Quant - 后端启动"
@@ -8,5 +10,10 @@ echo ""
 
 cd "$(dirname "$0")"
 
+echo "同步 uv 环境..."
+uv sync
+
 echo "启动中..."
-python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8777 --reload
+uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8777
+
+

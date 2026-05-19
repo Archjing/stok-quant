@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title 前端服务 - localhost:5174
+title 前端服务 - localhost:5173
 
 echo ============================================
 echo   US Stock Quant - 前端启动

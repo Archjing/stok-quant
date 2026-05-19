@@ -9,7 +9,7 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 os.chdir(_project_root)
 
-# 模拟 uvicorn "python -m uvicorn backend.main:app" 启动
+# 模拟 uvicorn "uv run uvicorn backend.main:app" 启动
 # uvicorn 会把启动命令的目录作为工作目录
 
 print("=" * 50)

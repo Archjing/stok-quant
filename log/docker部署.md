@@ -15,6 +15,7 @@
 #### ✅ node_modules — 不需要上传，当前已经是正确的
 
 `Dockerfile.frontend` 采用 **多阶段构建**：
+
 ```dockerfile
 # 构建阶段：安装依赖、编译
 FROM node:20 AS build
@@ -25,15 +26,18 @@ RUN npm install && npm run build    # ← node_modules 只在这里存在
 FROM nginx:alpine
 COPY --from=0 /app/dist /usr/share/nginx/html  # ← 只拷贝构建后的静态文件
 ```
+
 `node_modules` 只在构建容器中存在，**不会进入最终镜像**，`.gitignore` 中也已排除。
 
 #### ✅ SQLite 数据库 — 不需要打包进镜像，当前已经正确处理
 
 `docker-compose.yml` 用 **卷挂载** 分离了数据：
+
 ```yaml
 volumes:
-  - ./data:/app/data     # ← 宿主机 data/ 目录挂载到容器内
+  - ./data:/app/data # ← 宿主机 data/ 目录挂载到容器内
 ```
+
 - 数据库文件 **留在宿主机**，不在镜像中
 - 容器重启数据不丢失
 - 多个容器可共用（如果需要）
@@ -41,13 +45,13 @@ volumes:
 
 ### 总结
 
-| 项目 | 当前处理 | 评价 |
-|------|---------|------|
-| `node_modules` | `.gitignore` 排除 + Docker 内 npm install | ✅ 正确 |
-| `data/*.db` | `.gitignore` 排除 + Docker volume 挂载 | ✅ 正确 |
-| `backend/` 源码 | COPY 进镜像 | ✅ 必须 |
-| `frontend/` 源码 | 构建阶段 COPY，产物进 nginx | ✅ 必须 |
-| `config.yaml` | volume 挂载（可外部修改） | ✅ 正确 |
+| 项目             | 当前处理                                  | 评价    |
+| ---------------- | ----------------------------------------- | ------- |
+| `node_modules`   | `.gitignore` 排除 + Docker 内 npm install | ✅ 正确 |
+| `data/*.db`      | `.gitignore` 排除 + Docker volume 挂载    | ✅ 正确 |
+| `backend/` 源码  | COPY 进镜像                               | ✅ 必须 |
+| `frontend/` 源码 | 构建阶段 COPY，产物进 nginx               | ✅ 必须 |
+| `config.yaml`    | volume 挂载（可外部修改）                 | ✅ 正确 |
 
 **你现在的 Docker 部署方案已经是最佳实践了，不需要改动任何东西。** 只要你构建镜像时 `.dockerignore` 也加上 `data/` 和 `node_modules/`（当前已有 `.dockerignore`），build context 就不会包含这些大文件，构建速度也更快。
 
@@ -161,13 +165,13 @@ ls -la /var/run/docker.sock
 
 ### 常见原因及对应操作
 
-| 原因 | 操作 |
-|------|------|
-| **Docker 未安装** | `sudo apt install docker.io`（Ubuntu/Debian）或 `sudo yum install docker`（CentOS） |
-| **Docker 已安装但未启动** | `sudo systemctl start docker` |
-| **当前用户不在 docker 组** | `sudo usermod -aG docker $USER` 然后重新登录 (`newgrp docker`) |
-| **SELinux 阻止** | 检查 SELinux 状态：`getenforce` |
-| **Docker 刚安装完需重启** | `sudo systemctl enable docker && sudo systemctl restart docker` |
+| 原因                       | 操作                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| **Docker 未安装**          | `sudo apt install docker.io`（Ubuntu/Debian）或 `sudo yum install docker`（CentOS） |
+| **Docker 已安装但未启动**  | `sudo systemctl start docker`                                                       |
+| **当前用户不在 docker 组** | `sudo usermod -aG docker $USER` 然后重新登录 (`newgrp docker`)                      |
+| **SELinux 阻止**           | 检查 SELinux 状态：`getenforce`                                                     |
+| **Docker 刚安装完需重启**  | `sudo systemctl enable docker && sudo systemctl restart docker`                     |
 
 ### 免 Docker 替代方案
 
@@ -175,10 +179,10 @@ ls -la /var/run/docker.sock
 
 ```bash
 # 1. 安装 Python 依赖
-pip install -r requirements.txt
+uv sync
 
 # 2. 启动后端
-uvicorn backend.main:app --host 0.0.0.0 --port 8777
+uv run uvicorn backend.main:app --host 0.0.0.0 --port 8777
 
 # 3. 安装前端依赖并构建
 cd frontend
@@ -217,10 +221,10 @@ dpkg -l | grep docker
 **用户**: sudo service docker status
 Redirecting to /bin/systemctl status docker.service
 ○ docker.service - Docker Application Container Engine
-     Loaded: loaded (/usr/lib/systemd/system/docker.service; disabled; preset: disabled)
-     Active: inactive (dead)
+Loaded: loaded (/usr/lib/systemd/system/docker.service; disabled; preset: disabled)
+Active: inactive (dead)
 TriggeredBy: ○ docker.socket
-       Docs: https://docs.docker.com
+Docs: https://docs.docker.com
 
 **AI**: Docker 已安装但未启动。在服务器上执行：
 
