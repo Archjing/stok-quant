@@ -13,6 +13,12 @@ const DEFAULT_SYMBOLS: Record<MarketCode, string> = {
 const getCurrencyForMarket = (market: MarketCode) =>
   MARKETS.find((m) => m.code === market)?.currency || "USD";
 
+const toNumber = (value: unknown): number | null => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 export default function AnalysisView() {
   const { t } = useTranslation();
   const [market, setMarket] = useState<MarketCode>("US");
@@ -97,9 +103,20 @@ export default function AnalysisView() {
   );
 
   const formatMoney = (value?: number) => {
-    if (value == null || Number.isNaN(value)) return "-";
+    const numeric = toNumber(value);
+    if (numeric == null) return "-";
     const prefix = currency === "USD" ? "$" : currency === "CNY" ? "¥" : "HK$";
-    return `${prefix}${value.toFixed(2)}`;
+    return `${prefix}${numeric.toFixed(2)}`;
+  };
+
+  const formatFixed = (value: unknown, digits: number) => {
+    const numeric = toNumber(value);
+    return numeric == null ? "-" : numeric.toFixed(digits);
+  };
+
+  const formatVolume = (value: unknown) => {
+    const numeric = toNumber(value);
+    return numeric == null ? "-" : `${(numeric / 1e6).toFixed(1)}M`;
   };
 
   const loadData = async () => {
@@ -124,6 +141,9 @@ export default function AnalysisView() {
   };
 
   const latest = data[data.length - 1] || {};
+  const latestClose = toNumber(latest.close);
+  const latestSma50 = toNumber(latest.sma_50);
+  const latestRsi14 = toNumber(latest.rsi_14);
 
   const indicators = [
     {
@@ -315,37 +335,47 @@ export default function AnalysisView() {
               <div className="stat-label">{t("analysis.signal")}</div>
               <div
                 className={`stat-value ${
-                  latest.close > latest.sma_50 ? "positive" : "negative"
+                  latestClose != null && latestSma50 != null
+                    ? latestClose > latestSma50
+                      ? "positive"
+                      : "negative"
+                    : ""
                 }`}
               >
-                {latest.close > latest.sma_50
-                  ? t("analysis.bullish")
-                  : t("analysis.bearish")}
+                {latestClose != null && latestSma50 != null
+                  ? latestClose > latestSma50
+                    ? t("analysis.bullish")
+                    : t("analysis.bearish")
+                  : "-"}
               </div>
             </div>
+
             <div className="stat-card">
               <div className="stat-label">{t("analysis.rsiStatus")}</div>
               <div
                 className={`stat-value ${
-                  latest.rsi_14 > 70
-                    ? "negative"
-                    : latest.rsi_14 < 30
-                      ? "positive"
-                      : ""
+                  latestRsi14 != null
+                    ? latestRsi14 > 70
+                      ? "negative"
+                      : latestRsi14 < 30
+                        ? "positive"
+                        : ""
+                    : ""
                 }`}
               >
-                {latest.rsi_14 > 70
-                  ? t("analysis.overbought")
-                  : latest.rsi_14 < 30
-                    ? t("analysis.oversold")
-                    : t("analysis.neutral")}
+                {latestRsi14 != null
+                  ? latestRsi14 > 70
+                    ? t("analysis.overbought")
+                    : latestRsi14 < 30
+                      ? t("analysis.oversold")
+                      : t("analysis.neutral")
+                  : "-"}
               </div>
             </div>
+
             <div className="stat-card">
               <div className="stat-label">{t("stocks.volume")}</div>
-              <div className="stat-value">
-                {latest.volume ? `${(latest.volume / 1e6).toFixed(1)}M` : "-"}
-              </div>
+              <div className="stat-value">{formatVolume(latest.volume)}</div>
             </div>
           </div>
 
@@ -371,12 +401,17 @@ export default function AnalysisView() {
                 >
                   <div className="stat-label">{ind.label}</div>
                   <div
-                    className={`stat-value ${ind.value && ind.warn?.(ind.value) ? "negative" : ""}`}
+                    className={`stat-value ${
+                      toNumber(ind.value) != null &&
+                      ind.warn?.(toNumber(ind.value) as number)
+                        ? "negative"
+                        : ""
+                    }`}
                   >
-                    {ind.value != null
+                    {toNumber(ind.value) != null
                       ? ind.fmt
-                        ? ind.fmt(ind.value)
-                        : ind.value.toFixed(2)
+                        ? ind.fmt(toNumber(ind.value) as number)
+                        : formatFixed(ind.value, 2)
                       : "-"}
                   </div>
                 </div>
@@ -403,37 +438,50 @@ export default function AnalysisView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.slice(-30).map((d: any, i: number) => (
-                    <tr key={i}>
-                      <td className="mono" style={{ fontSize: 12 }}>
-                        {d.date}
-                      </td>
-                      <td className="mono" style={{ fontWeight: 500 }}>
-                        {formatMoney(d.close)}
-                      </td>
+                  {data.slice(-30).map((d: any, i: number) => {
+                    const rowRsi14 = toNumber(d.rsi_14);
+                    const rowMacd = toNumber(d.macd);
+                    const rowMacdHist = toNumber(d.macd_hist);
+                    return (
+                      <tr key={i}>
+                        <td className="mono" style={{ fontSize: 12 }}>
+                          {d.date}
+                        </td>
+                        <td className="mono" style={{ fontWeight: 500 }}>
+                          {formatMoney(d.close)}
+                        </td>
 
-                      <td
-                        className={`mono ${d.rsi_14 > 70 ? "metric-negative" : d.rsi_14 < 30 ? "metric-positive" : ""}`}
-                      >
-                        {d.rsi_14?.toFixed(1) || "-"}
-                      </td>
-                      <td
-                        className={`mono ${(d.macd_hist || 0) > 0 ? "metric-positive" : "metric-negative"}`}
-                      >
-                        {d.macd?.toFixed(4) || "-"}
-                      </td>
-                      <td className="mono">
-                        {d.sma_20 ? formatMoney(d.sma_20) : "-"}
-                      </td>
-                      <td className="mono">
-                        {d.sma_50 ? formatMoney(d.sma_50) : "-"}
-                      </td>
+                        <td
+                          className={`mono ${
+                            rowRsi14 != null
+                              ? rowRsi14 > 70
+                                ? "metric-negative"
+                                : rowRsi14 < 30
+                                  ? "metric-positive"
+                                  : ""
+                              : ""
+                          }`}
+                        >
+                          {formatFixed(d.rsi_14, 1)}
+                        </td>
 
-                      <td className="mono">
-                        {d.volume ? `${(d.volume / 1e6).toFixed(1)}M` : "-"}
-                      </td>
-                    </tr>
-                  ))}
+                        <td
+                          className={`mono ${(rowMacdHist || 0) > 0 ? "metric-positive" : "metric-negative"}`}
+                        >
+                          {formatFixed(d.macd, 4)}
+                        </td>
+
+                        <td className="mono">
+                          {d.sma_20 ? formatMoney(d.sma_20) : "-"}
+                        </td>
+                        <td className="mono">
+                          {d.sma_50 ? formatMoney(d.sma_50) : "-"}
+                        </td>
+
+                        <td className="mono">{formatVolume(d.volume)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

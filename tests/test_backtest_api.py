@@ -10,8 +10,9 @@ if str(_project_root) not in sys.path:
 os.chdir(_project_root)
 
 print(f"Working dir: {os.getcwd()}")
-print(f"DB path: {os.path.abspath('data/us_stocks.db')}")
-print(f"DB exists: {os.path.exists('data/us_stocks.db')}")
+print(f"DB path: {os.path.abspath('data/stocks.db')}")
+print(f"DB exists: {os.path.exists('data/stocks.db')}")
+
 
 # 测试导入
 from backend.data_manager import DataManager

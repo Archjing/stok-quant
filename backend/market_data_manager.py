@@ -12,6 +12,7 @@ from typing import Any
 
 import pandas as pd
 
+from backend.crawlers.data_cleaner import USDataCleaner
 from backend.database import Base, SessionLocal, engine
 from backend.markets.registry import get_market_source
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
@@ -120,6 +121,9 @@ class MarketDataManager:
                 session.commit()
                 return False, 0, "no_data"
 
+            df = USDataCleaner.clean_daily_data(df)
+            df = USDataCleaner.add_technical_indicators(df)
+
             rows = self._save_daily_to_db(session, market_code, normalized, df)
             sync_date = self._max_date(df) or date.today()
             self._update_sync_record(session, market_code, normalized, sync_date, rows, "completed")
@@ -203,6 +207,35 @@ class MarketDataManager:
             return count
         finally:
             session.close()
+
+    def backfill_technical_indicators(self, market: str, symbols: list[str] | None = None) -> dict[str, Any]:
+        """批量回填指定市场历史日线的技术指标。"""
+        market_code = self._new_market(market)
+        targets = self._get_backfill_targets(market_code, symbols)
+        results: dict[str, Any] = {
+            "market": market_code,
+            "symbols_total": len(targets),
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "updated_rows": 0,
+            "errors": [],
+        }
+
+        for index, sym in enumerate(targets, 1):
+            ok, rows, status = self._backfill_one_symbol(market_code, sym)
+            if ok:
+                if rows > 0:
+                    results["processed"] += 1
+                    results["updated_rows"] += rows
+                else:
+                    results["skipped"] += 1
+            else:
+                results["failed"] += 1
+                results["errors"].append(f"{sym}: {status}")
+            if index % self.config.BATCH_SIZE == 0 and index < len(targets):
+                time.sleep(self.config.BATCH_PAUSE)
+        return results
 
     # ==========================================================
     # 查询
@@ -401,6 +434,62 @@ class MarketDataManager:
                 return "missing"
             days_old = (date.today() - sync.last_sync_date).days
             return "expired" if days_old > self.config.CACHE_EXPIRY_DAYS else "ok"
+        finally:
+            session.close()
+
+    def _get_backfill_targets(self, market: str, symbols: list[str] | None = None) -> list[str]:
+        if symbols:
+            return [normalize_symbol(sym, market) for sym in symbols]
+
+        session = SessionLocal()
+        try:
+            rows = (
+                session.query(MarketDailyBar.symbol)
+                .filter(MarketDailyBar.market == market)
+                .distinct()
+                .order_by(MarketDailyBar.symbol)
+                .all()
+            )
+            return [row.symbol for row in rows]
+        finally:
+            session.close()
+
+    def _backfill_one_symbol(self, market: str, symbol: str) -> tuple[bool, int, str | None]:
+        session = SessionLocal()
+        try:
+            rows = (
+                session.query(MarketDailyBar)
+                .filter(
+                    MarketDailyBar.market == market,
+                    MarketDailyBar.symbol == symbol,
+                )
+                .order_by(MarketDailyBar.date)
+                .all()
+            )
+            if len(rows) < 20:
+                return True, 0, "not_enough_rows"
+
+            df = self.rows_to_dataframe(rows)
+            df = USDataCleaner.clean_daily_data(df)
+            if df.empty or len(df) < 20:
+                return True, 0, "not_enough_rows"
+
+            df = USDataCleaner.add_technical_indicators(df)
+            updated_rows = self._save_daily_to_db(session, market, symbol, df)
+            sync_date = self._max_date(df) or date.today()
+            self._update_sync_record(session, market, symbol, sync_date, updated_rows, "completed")
+            session.commit()
+            logger.info("%s/%s 指标回填成功: %s 行", market, symbol, updated_rows)
+            return True, updated_rows, None
+        except Exception as exc:
+            session.rollback()
+            logger.exception("%s/%s 指标回填失败", market, symbol)
+            try:
+                self._update_sync_record(session, market, symbol, date.today(), 0, "error", str(exc)[:500])
+                session.commit()
+            except Exception:
+                session.rollback()
+            return False, 0, str(exc)
         finally:
             session.close()
 

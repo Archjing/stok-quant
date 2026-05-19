@@ -83,3 +83,11 @@ def test_backtest_status_hk_missing_response_shape() -> None:
     assert payload["currency"] == "HKD"
     assert payload["symbol"] == "HK.00700"
     assert payload["status"] in {"available", "missing", "syncing", "error"}
+
+
+def test_backfill_indicators_cn_endpoint_rejects_us() -> None:
+    client = TestClient(app)
+    response = client.post("/api/data/backfill-indicators", params={"market": "US"})
+
+    assert response.status_code == 400
+    assert "仅支持 CN/HK" in response.json()["detail"]

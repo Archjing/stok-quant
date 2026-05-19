@@ -1,6 +1,6 @@
 """
-US Stock Quant System - FastAPI 主程序
-美股量化分析 + 回测系统
+Multi-Market Quant System - FastAPI 主程序
+多市场股票量化分析+策略回测系统
 """
 import logging
 import sys
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="美股量化分析与回测系统",
+    description="多市场股票量化分析与回测系统",
     lifespan=lifespan,
 )
 

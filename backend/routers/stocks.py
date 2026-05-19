@@ -78,9 +78,12 @@ def _apply_text_search(stocks: list[dict], query: Optional[str]) -> list[dict]:
 
 
 
-def _market_daily_payload(market: str, symbol: str, rows, source: str) -> dict:
+def _market_daily_payload(market: str, symbol: str, rows, source: str, indicators: bool = False) -> dict:
     """构建 CN/HK daily 响应。"""
     df = market_mgr.rows_to_dataframe(rows)
+    df = USDataCleaner.clean_daily_data(df)
+    if indicators:
+        df = USDataCleaner.add_technical_indicators(df)
     return {
         "market": market,
         "currency": get_currency(market),
@@ -91,6 +94,7 @@ def _market_daily_payload(market: str, symbol: str, rows, source: str) -> dict:
         "source": source,
         "data": df.fillna("").to_dict(orient="records"),
     }
+
 
 
 # 指数成分映射
@@ -273,10 +277,9 @@ def get_stock_daily(
             source = "akshare"
         if not db_rows:
             raise HTTPException(404, f"股票 {symbol} 无日线数据")
-        return _market_daily_payload(market_code, sym, db_rows, source)
+        return _market_daily_payload(market_code, sym, db_rows, source, indicators=indicators)
 
     sym = symbol.upper()
-
 
     db_rows = data_mgr.get_daily_from_db(sym, years=years)
     if db_rows:
@@ -320,6 +323,7 @@ def get_stock_daily(
         "source": "yfinance",
         "data": df.fillna("").to_dict(orient="records"),
     }
+
 
 
 @router.get("/{symbol}/kline")

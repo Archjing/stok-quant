@@ -18,6 +18,7 @@ _market_manager = MarketDataManager(request_delay=0.6)
 _sync_lock = threading.Lock()
 _sync_running = False
 _market_sync_running: dict[str, bool] = {"CN": False, "HK": False}
+_market_backfill_running: dict[str, bool] = {"CN": False, "HK": False}
 
 
 def _api_market(market: str) -> str:
@@ -160,3 +161,35 @@ def refresh_prices(market: str = Query("US", description="市场: US|CN|HK")):
         return {"market": "US", "currency": "USD", "message": "价格已刷新", "count": count}
     except Exception as e:
         raise HTTPException(500, f"刷新失败: {e}")
+
+
+@router.post("/backfill-indicators")
+def trigger_backfill_indicators(
+    market: str = Query("CN", description="市场: CN|HK"),
+    symbols: str | None = Query(None, description="股票代码，逗号分隔；为空则回填当前市场已有历史数据的股票"),
+):
+    """触发 CN/HK 历史技术指标批量回填（后台异步执行）"""
+    market_code = _api_market(market)
+    if market_code == "US":
+        raise HTTPException(400, "backfill-indicators 仅支持 CN/HK")
+    if _market_sync_running.get(market_code, False):
+        raise HTTPException(400, f"{market_code} 下载/更新任务正在进行中")
+    if _market_backfill_running.get(market_code, False):
+        raise HTTPException(400, f"{market_code} 指标回填任务正在进行中")
+
+    target_symbols = _parse_symbols(symbols, market_code)
+    _market_backfill_running[market_code] = True
+
+    def _run_market_backfill():
+        try:
+            _market_manager.backfill_technical_indicators(market_code, symbols=target_symbols)
+        finally:
+            _market_backfill_running[market_code] = False
+
+    threading.Thread(target=_run_market_backfill, daemon=True).start()
+    return {
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "message": f"{market_code} 指标回填已启动",
+        "symbols": target_symbols or "existing_market_history",
+    }

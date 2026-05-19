@@ -1,12 +1,12 @@
 """
 配置模块
 """
-import os
-from pathlib import Path
-from typing import Dict, Any
-import yaml
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict
+
+import yaml
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,17 +20,15 @@ def load_yaml_config() -> Dict[str, Any]:
 
 
 class Settings(BaseSettings):
-    app_name: str = "US Stock Quant System"
+    model_config = SettingsConfigDict(env_file=".env", extra="allow")
+
+    app_name: str = "多市场量化分析与策略回测"
     app_version: str = "1.0.0"
     debug: bool = True
     db_type: str = "sqlite"
-    db_path: str = str(BASE_DIR / "data" / "us_stocks.db")
+    db_path: str = str(BASE_DIR / "data" / "stocks.db")
     server_host: str = "0.0.0.0"
     server_port: int = 8777
-
-    class Config:
-        env_file = ".env"
-        extra = "allow"
 
 
 @lru_cache()
@@ -40,11 +38,11 @@ def get_settings() -> Settings:
     db_config = yaml_config.get("database", {})
     server_config = yaml_config.get("server", {})
     return Settings(
-        app_name=app_config.get("name", "US Stock Quant System"),
+        app_name=app_config.get("name", "多市场量化分析与策略回测"),
         app_version=app_config.get("version", "1.0.0"),
         debug=app_config.get("debug", True),
         db_type=db_config.get("type", "sqlite"),
-        db_path=db_config.get("path", str(BASE_DIR / "data" / "us_stocks.db")),
+        db_path=db_config.get("path", str(BASE_DIR / "data" / "stocks.db")),
         server_host=server_config.get("host", "0.0.0.0"),
         server_port=server_config.get("port", 8777),
     )
@@ -58,3 +56,4 @@ def get_backtest_config() -> Dict[str, Any]:
 def get_crawler_config() -> Dict[str, Any]:
     yaml_config = load_yaml_config()
     return yaml_config.get("crawler", {})
+
