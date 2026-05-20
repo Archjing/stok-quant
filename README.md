@@ -1,18 +1,14 @@
-# Multi-Market Quant System
+# US Stock Quant System
 
-demo：[点我试一下吧~](http://39.105.102.5:8081/stocks)
-
-一个支持 **美股 US、A 股 CN、港股 HK** 的多市场量化分析与策略回测项目，提供股票数据浏览、技术指标分析、策略回测、多策略对比和数据同步能力，适合用于量化研究、策略验证和教学演示。
+一个面向美股市场的量化分析与策略回测项目，提供股票数据浏览、技术指标分析、策略回测、多策略对比和数据同步能力，适合用于量化研究、策略验证和教学演示。
 
 ## 功能特性
 
-- **多市场数据浏览**：支持美股、A 股、港股股票列表、基础信息、日线数据和 K 线数据
+- **美股数据浏览**：支持查看股票列表、基础信息、日线数据和 K 线数据
 - **多周期 K 线展示**：支持日线、月线、年线切换，适配前端图表展示
 - **技术指标分析**：内置 SMA、EMA、MACD、RSI、布林带、ATR 等常见指标
 - **策略回测引擎**：支持单策略回测、收益统计、回撤分析、交易记录输出
 - **多策略对比**：可对同一股票运行多种策略并横向比较表现
-- **多市场回测规则**：支持按市场返回交易规则配置，并在回测中应用本地化交易约束
-- **拒绝信号记录**：回测引擎会记录因 T+1、涨跌停、资金不足、无效数量等导致的拒绝信号
 - **懒加载数据机制**：数据库无缓存时自动触发下载，降低首次使用门槛
 - **数据同步管理**：支持全量下载、增量更新、价格刷新和同步状态查看
 - **双语言前端界面**：支持中英文切换
@@ -24,7 +20,7 @@ demo：[点我试一下吧~](http://39.105.102.5:8081/stocks)
 - **后端**：FastAPI + SQLAlchemy + SQLite
 - **前端**：React 18 + TypeScript + Vite + SCSS
 - **图表**：ApexCharts + Recharts
-- **数据源**：Yahoo Finance（yfinance，美股）+ AkShare（A 股 / 港股）
+- **数据源**：Yahoo Finance（yfinance）
 - **数据处理**：pandas + polars + numpy + scipy + ta + numba
 - **扩展实验**：Clojure DSL
 - **部署方式**：Docker + Docker Compose + Nginx
@@ -78,51 +74,10 @@ npm run dev
 docker-compose up --build
 ```
 
-当前默认容器说明：
+默认容器说明：
 
-- `frontend`：对外提供 Web 界面，默认映射 `8081:80`
-- `backend`：提供 FastAPI 接口和数据服务，默认映射 `8777:8777`
-
-常用访问地址：
-
-- 前端：`http://localhost:8081`
-- 后端文档：`http://localhost:8777/docs`
-- 后端健康检查：`http://localhost:8777/health`
-
-## 多市场支持
-
-当前支持市场：
-
-| 市场 | market 参数 | 内部代码示例                          | 数据源                   | 货币 |
-| ---- | ----------- | ------------------------------------- | ------------------------ | ---- |
-| 美股 | `US`        | `AAPL`                                | Yahoo Finance / yfinance | USD  |
-| A 股 | `CN`        | `SH.600519`, `SZ.000001`, `BJ.835185` | AkShare                  | CNY  |
-| 港股 | `HK`        | `HK.00700`, `HK.09988`                | AkShare                  | HKD  |
-
-所有主要接口均支持 `market=US|CN|HK` 参数，默认 `market=US`，因此旧版美股调用保持兼容。
-
-代码输入会自动规范化，例如：
-
-- A 股：`600519` / `SH600519` / `SH.600519` -> `SH.600519`
-- 港股：`700` / `00700` / `HK700` / `HK.00700` -> `HK.00700`
-- 美股：`aapl` -> `AAPL`
-
-当前运行时实现说明：
-
-- **统一多市场运行时已落地**：回测、数据读取和状态查询优先走统一市场链路。
-- **美股 US**：继续支持单股单位交易、无 T+1、无涨跌停、无印花税模拟。
-- **A 股 CN**：已实现更真实的交易规则：
-  - 100 股一手
-  - T+1 卖出限制
-  - 卖出印花税
-  - 涨跌停价格边界约束
-  - 一字涨停不可买、一字跌停不可卖
-- **港股 HK**：已实现第一阶段真实规则：
-  - 按股票覆盖 board lot / lot size
-  - 卖出印花税已启用
-  - 更细手续费模型仍在后续计划中
-
-可通过接口 `GET /api/backtest/market-rules?market=US|CN|HK` 查看当前市场规则配置。
+- `frontend`：对外提供 Web 界面
+- `backend`：提供 FastAPI 接口和数据服务
 
 ## 项目结构
 
@@ -132,9 +87,7 @@ docker-compose up --build
 │   ├── main.py                 # FastAPI 入口
 │   ├── config.py               # 配置加载
 │   ├── database.py             # 数据库初始化与连接
-│   ├── data_manager.py         # 美股数据管理与同步调度
-│   ├── market_data_manager.py  # A 股 / 港股通用数据管理器
-│   ├── markets/                # 多市场数据源、代码规范化和注册表
+│   ├── data_manager.py         # 数据管理与同步调度
 │   ├── analyzers/              # 技术分析模块
 │   ├── backtest/               # 回测引擎、指标和策略
 │   ├── crawlers/               # 美股数据抓取与清洗
@@ -162,8 +115,8 @@ docker-compose up --build
 
 ### 股票数据模块
 
-- 提供 US / CN / HK 股票列表查询、筛选和详情查看
-- 支持按行业、交易所、指数、市场规模、自定义股票池筛选；CN/HK 第一阶段支持交易所、市场层级和自定义筛选
+- 提供股票列表查询、筛选和详情查看
+- 支持按行业、交易所、指数、市场规模、自定义股票池筛选
 - 支持日线历史数据和 K 线图数据输出
 - 支持财务信息查询
 
@@ -199,58 +152,36 @@ docker-compose up --build
 - 盈亏比
 - 交易明细
 - 资金曲线与回撤曲线
-- 市场规则快照（`market_rules`）
-
-当前市场规则实现进度：
-
-- **US**：默认单位股、无 T+1、无涨跌停、无印花税模拟
-- **CN**：100 股整数手、T+1、卖出印花税、涨跌停执行边界、涨停/跌停一字板成交限制
-- **HK**：按股票 board lot 映射进行数量归整，卖出印花税已启用
-
-回测引擎内部会记录 `rejected_signals`，用于标记以下拒绝原因：
-
-- `invalid_quantity`
-- `insufficient_cash`
-- `t_plus_one`
-- `price_limit_up_locked`
-- `price_limit_down_locked`
 
 ## 主要接口
 
 ### 数据接口
 
-- `GET /api/stocks/?market=US|CN|HK`：获取股票列表
-- `GET /api/stocks/symbols?market=US|CN|HK`：获取支持的股票代码
-- `GET /api/stocks/{symbol}/daily?market=US|CN|HK`：获取股票日线数据
-- `GET /api/stocks/{symbol}/kline?market=US|CN|HK`：获取 K 线数据
-- `GET /api/stocks/{symbol}/financials?market=US|CN|HK`：获取财务数据
+- `GET /api/stocks/`：获取股票列表
+- `GET /api/stocks/symbols`：获取支持的股票代码
+- `GET /api/stocks/{symbol}/daily`：获取股票日线数据
+- `GET /api/stocks/{symbol}/kline`：获取 K 线数据
+- `GET /api/stocks/{symbol}/financials`：获取财务数据
 
 ### 回测接口
 
 - `GET /api/backtest/strategies`：获取可用策略列表
-- `GET /api/backtest/market-rules?market=US|CN|HK`：获取当前市场回测规则配置
-- `POST /api/backtest/run?market=US|CN|HK`：执行单策略回测
-- `POST /api/backtest/compare?market=US|CN|HK`：多策略对比
-- `GET /api/backtest/status/{symbol}?market=US|CN|HK`：查看股票数据状态
-- `POST /api/backtest/warmup?market=US|CN|HK`：预热下载指定股票
-
-说明：
-
-- `/run` 当前会返回 `market_rules`、指标结果、资金曲线、回撤曲线和交易记录
-- 回测引擎内部已经生成 `rejected_signals`，但当前 `/run` 和 `/compare` 响应尚未完整暴露该字段
-  数据
+- `POST /api/backtest/run`：执行单策略回测
+- `POST /api/backtest/compare`：多策略对比
+- `GET /api/backtest/status/{symbol}`：查看股票数据状态
+- `POST /api/backtest/warmup`：预热下载指定股票数据
 
 ### 数据同步接口
 
-- `GET /api/data/status?market=US|CN|HK`：查看同步状态
-- `POST /api/data/download?market=US|CN|HK`：触发全量下载
-- `POST /api/data/update?market=US|CN|HK`：触发增量更新
-- `POST /api/data/refresh-prices?market=US|CN|HK`：刷新实时价格
+- `GET /api/data/status`：查看同步状态
+- `POST /api/data/download`：触发全量下载
+- `POST /api/data/update`：触发增量更新
+- `POST /api/data/refresh-prices`：刷新实时价格
 
 ## 使用说明
 
 1. **首次启动**：后端启动时会自动初始化数据库
-2. **浏览股票**：在前端 Stock List 页面选择 US / CN / HK 市场，查看股票列表与 K 线数据
+2. **浏览股票**：在前端 Stock List 页面查看股票列表与 K 线数据
 3. **技术分析**：在 Analysis 页面查看技术指标和近期行情数据
 4. **运行回测**：在 Backtest 页面选择股票、策略和回溯年数后执行回测
 5. **策略对比**：启用 Compare 模式，对多个策略进行横向比较
@@ -260,37 +191,10 @@ docker-compose up --build
 ## 注意事项
 
 - 本项目仅用于学习、研究和演示，不构成任何投资建议
-- 数据来自 Yahoo Finance 和 AkShare，可能存在延迟、缺失、接口调整或访问频率限制
+- 数据来自 Yahoo Finance，可能存在延迟、缺失或接口限制
 - 首次请求某些股票时，可能因懒下载机制产生等待时间
 - 若进行批量下载，建议控制调用频率，避免触发数据源限流
-- 当前多市场回测规则仍在持续增强中，港股更细手续费模型尚未完成
 - SQLite 适合单机开发与中小规模使用，生产环境可考虑替换为更强的数据库方案
-- Docker 默认前端映射端口为 `8081`，后端映射端口为 `8777`
-- 如部署后前端出现白屏，优先确认是否使用最新代码重新构建前端镜像，并检查浏览器控制台与容器日志
-
-## 测试
-
-```bash
-# 运行 Python 测试
-uv run pytest
-
-# 运行指定多市场回测规则测试
-uv run pytest tests/test_backtest_market_rules.py -q
-
-# 运行前端类型检查和构建
-cd frontend
-npm run build
-```
-
-新增多市场相关测试覆盖：
-
-- 股票代码规范化
-- CN/HK 数据源字段标准化和样本池
-- `MarketDataManager` 基础工具和列表种子化
-- 多市场股票 / K 线 / 回测状态 API 响应结构
-- A 股回测规则：100 股一手、T+1、涨跌停边界与一字板限制
-- 港股回测规则：board lot 映射与数量归整
-- 回测结果包含 `market_rules`
 
 ## License
 

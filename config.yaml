@@ -1,5 +1,5 @@
 app:
-  name: "多市场股票量化分析与回测系统"
+  name: "US Stock Quant System"
   version: "1.0.0"
   debug: true
 
@@ -50,8 +50,8 @@ analysis:
     volume: { min: 100000 }
 
 data_sync:
-  history_years: 10 # 首次批量下载时的历史年数
-  request_delay: 0.6 # 每只股票请求间隔（秒），降低 yfinance 限流风险
+  history_years: 10        # 首次批量下载时的历史年数
+  request_delay: 0.6       # 每只股票请求间隔（秒），降低 yfinance 限流风险
 
 logging:
   level: "INFO"

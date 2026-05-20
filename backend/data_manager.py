@@ -1,18 +1,7 @@
 """
-Legacy US data manager.
-
-说明：
-- 本模块已不再用于 backend 主运行链路。
-- US/CN/HK 当前统一通过 `backend.market_data_manager.MarketDataManager`
-  读写 `MarketStock / MarketDailyBar / MarketSyncStatus`。
-- 本模块保留的目的仅包括：
-  1. 16.3 迁移脚本的数据来源
-  2. 历史兼容测试
-  3. 必要时的人工迁移/排障参考
-
-除上述场景外，请勿在新的运行时功能中继续依赖本模块。
+数据管理器 - 懒人下载策略
+核心原则：只在需要时下载，下载时遵守限流规则
 """
-
 import time
 import random
 import logging
@@ -74,14 +63,14 @@ PRICE_CACHE_TTL = 300  # 价格缓存 5 分钟
 
 class DataManager:
     """
-    Legacy 美股数据管理器。
-
-    注意：
-    - 该类已从主 API / 回测 / 数据同步运行链路退役。
-    - 新功能应改用 `MarketDataManager(market="US")` 与通用 Market* 表。
-    - 当前仅作为旧 US 表迁移与兼容层保留。
+    懒人数据管理器
+    
+    核心策略：
+    1. 优先从数据库读取 - 避免不必要的网络请求
+    2. 按需下载 - 只在需要时下载数据
+    3. 智能限流 - 遵守 yfinance 的请求限制
+    4. 静默重试 - 遇到限流时自动等待后重试
     """
-
 
     def __init__(self, request_delay: float = LazyDownloadConfig.BASE_DELAY, history_years: int = 10):
         self.source = USStockSource()
@@ -176,28 +165,25 @@ class DataManager:
         logger.debug(f"延迟 {total:.1f} 秒...")
         time.sleep(total)
 
+    # ==========================================================
+    # 1. 股票列表 + 实时价格（懒加载 + 缓存）
+    # ==========================================================
     def get_stock_list(self) -> List[Dict[str, Any]]:
         """获取股票列表（自动判断是否需要刷新价格）"""
         self._ensure_stocks_seeded()
         if self._price_cache_stale():
-            try:
-                self.refresh_stock_prices()
-            except Exception as exc:
-                logger.warning("刷新股票价格失败，返回已有/静态股票列表: %s", exc)
+            self.refresh_stock_prices()
         return self._read_stock_list_from_db()
-
-
-
 
     def _ensure_stocks_seeded(self):
         """确保 us_stocks 表有基础记录"""
         session = SessionLocal()
         try:
-            existing_symbols = {symbol for (symbol,) in session.query(USStock.symbol).all()}
-            created = 0
+            count = session.query(USStock).count()
+            if count > 0:
+                return
+            # 首次种子化
             for sym in MAJOR_US_STOCKS:
-                if sym in existing_symbols:
-                    continue
                 session.add(USStock(
                     symbol=sym,
                     name=STOCK_NAMES.get(sym, sym),
@@ -207,13 +193,10 @@ class DataManager:
                         "ADBE", "AMD", "INTC", "NFLX", "PYPL", "BIDU", "PDD",
                     } else "NYSE",
                 ))
-                created += 1
-            if created:
-                session.commit()
-                logger.info(f"us_stocks 表种子化补充完成: {created} 条")
+            session.commit()
+            logger.info(f"us_stocks 表种子化完成: {len(MAJOR_US_STOCKS)} 条")
         finally:
             session.close()
-
 
     def _price_cache_stale(self) -> bool:
         """判断价格缓存是否过期"""
@@ -501,9 +484,8 @@ class DataManager:
 
 
 # ============================================================
-# Legacy CLI（仅保留给旧表迁移/人工排障）
+# CLI
 # ============================================================
-
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

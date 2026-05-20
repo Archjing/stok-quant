@@ -44,6 +44,5 @@ def get_db():
 
 
 def init_db():
-    from backend.models import stock, backtest as bt, market  # noqa
+    from backend.models import stock, backtest as bt  # noqa
     Base.metadata.create_all(bind=engine)
-
