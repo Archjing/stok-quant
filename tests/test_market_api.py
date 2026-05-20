@@ -91,3 +91,16 @@ def test_backfill_indicators_cn_endpoint_rejects_us() -> None:
 
     assert response.status_code == 400
     assert "仅支持 CN/HK" in response.json()["detail"]
+
+
+def test_backtest_market_rules_endpoint_cn_response_shape() -> None:
+    client = TestClient(app)
+    response = client.get("/api/backtest/market-rules", params={"market": "CN"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["market"] == "CN"
+    assert payload["currency"] == "CNY"
+    assert payload["rules"]["lot_size"] == 100
+    assert payload["rules"]["t_plus_one"] is True
+    assert payload["rules"]["price_limit"] is True

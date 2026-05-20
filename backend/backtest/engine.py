@@ -2,14 +2,16 @@
 回测引擎核心 - 事件驱动回测框架
 """
 import logging
-from typing import Dict, List, Optional, Callable, Any
-from datetime import date, datetime
 from dataclasses import dataclass, field
-import pandas as pd
-import numpy as np
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from backend.backtest.strategies import Strategy
+import numpy as np
+import pandas as pd
+
+from backend.backtest.market_config import MarketBacktestConfig, get_market_backtest_config
 from backend.backtest.metrics import calculate_metrics
+from backend.backtest.strategies import Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +19,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Order:
     """订单"""
+
     symbol: str
     quantity: int
-    order_type: str = "market"   # market, limit, stop
-    side: str = "buy"            # buy, sell
+    order_type: str = "market"
+    side: str = "buy"
     price: Optional[float] = None
-    status: str = "pending"      # pending, filled, rejected, cancelled
+    status: str = "pending"
     filled_price: Optional[float] = None
     filled_time: Optional[datetime] = None
     commission: float = 0.0
@@ -32,6 +35,7 @@ class Order:
 @dataclass
 class Trade:
     """成交记录"""
+
     symbol: str
     side: str
     quantity: int
@@ -45,10 +49,12 @@ class Trade:
 @dataclass
 class Position:
     """持仓"""
+
     symbol: str
     quantity: int = 0
     avg_cost: float = 0.0
     current_price: float = 0.0
+    last_buy_time: Optional[datetime] = None
 
     @property
     def market_value(self) -> float:
@@ -68,6 +74,7 @@ class Position:
 @dataclass
 class Bar:
     """一根K线"""
+
     symbol: str
     timestamp: datetime
     open: float
@@ -86,6 +93,7 @@ class Bar:
 @dataclass
 class BacktestResult:
     """回测结果"""
+
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     total_bars: int = 0
@@ -108,6 +116,7 @@ class BacktestResult:
     drawdown_curve: List[float] = field(default_factory=list)
     trades: List[Trade] = field(default_factory=list)
     monthly_returns: Dict[str, float] = field(default_factory=dict)
+    market_rules: Dict[str, Any] = field(default_factory=dict)
     status: str = "completed"
     error_message: str = ""
 
@@ -123,6 +132,8 @@ class BacktestEngine:
         initial_cash: float = 100000.0,
         commission: float = 0.001,
         slippage: float = 0.0005,
+        market: str = "US",
+        market_config: Optional[MarketBacktestConfig] = None,
     ):
         self.data = data
         self.strategy_class = strategy_class
@@ -130,6 +141,8 @@ class BacktestEngine:
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.market = market
+        self.market_config = market_config or get_market_backtest_config(market)
 
         self.cash = initial_cash
         self.position = Position(symbol=symbol)
@@ -149,38 +162,32 @@ class BacktestEngine:
             self.strategy.engine = self
             self.strategy.on_start()
 
-            bars = self._iter_bars()
-            for i, bar in enumerate(bars):
+            for bar in self._iter_bars():
                 self.current_bar = bar
-
-                # 更新持仓价格
                 self.position.current_price = bar.close
 
-                # 调用策略
                 try:
                     self.strategy.on_bar(bar)
-                except Exception as e:
-                    logger.error(f"策略 on_bar 异常: {e}")
+                except Exception as exc:
+                    logger.error("策略 on_bar 异常: %s", exc)
                     continue
 
-                # 记录权益
                 equity = self.cash + self.position.market_value
                 self.equity_curve.append(equity)
 
             self.strategy.on_stop()
             return self._generate_result()
+        except Exception as exc:
+            logger.exception("回测运行失败")
+            return BacktestResult(status="failed", error_message=str(exc))
 
-        except Exception as e:
-            logger.exception(f"回测运行失败")
-            return BacktestResult(
-                status="failed",
-                error_message=str(e),
-            )
-
-    def buy(self, symbol: str, quantity: int, price: Optional[float] = None,
-            tag: str = ""):
+    def buy(self, symbol: str, quantity: int, price: Optional[float] = None, tag: str = ""):
         """买入"""
         if not self.current_bar:
+            return
+
+        quantity = self._normalize_buy_quantity(quantity)
+        if quantity <= 0:
             return
 
         if price is None:
@@ -189,30 +196,40 @@ class BacktestEngine:
         cost = quantity * price
         commission = cost * self.commission
         total_cost = cost + commission
-
         if total_cost > self.cash:
-            logger.debug(f"现金不足: 需要 {total_cost:.2f}, 可用 {self.cash:.2f}")
+            logger.debug("现金不足: 需要 %.2f, 可用 %.2f", total_cost, self.cash)
             return
 
         self.cash -= total_cost
         prev_cost = self.position.avg_cost * self.position.quantity
         self.position.quantity += quantity
         self.position.avg_cost = (prev_cost + cost) / self.position.quantity
+        self.position.last_buy_time = self.current_bar.timestamp
 
-        self.trades.append(Trade(
-            symbol=symbol, side="buy", quantity=quantity,
-            price=price, time=self.current_bar.timestamp,
-            commission=commission, tag=tag,
-        ))
+        self.trades.append(
+            Trade(
+                symbol=symbol,
+                side="buy",
+                quantity=quantity,
+                price=price,
+                time=self.current_bar.timestamp,
+                commission=commission,
+                tag=tag,
+            )
+        )
 
-    def sell(self, symbol: str, quantity: int, price: Optional[float] = None,
-             tag: str = ""):
+    def sell(self, symbol: str, quantity: int, price: Optional[float] = None, tag: str = ""):
         """卖出"""
         if not self.current_bar:
             return
+
         if self.position.quantity < quantity:
             quantity = self.position.quantity
+        quantity = self._normalize_sell_quantity(quantity)
         if quantity <= 0:
+            return
+        if self._is_t_plus_one_blocked():
+            logger.debug("T+1 限制生效，当日买入仓位不可卖出")
             return
 
         if price is None:
@@ -220,42 +237,76 @@ class BacktestEngine:
 
         revenue = quantity * price
         commission = revenue * self.commission
-        total_revenue = revenue - commission
+        stamp_duty = 0.0
+        if self.market_config.stamp_tax_sell or self.market_config.stamp_duty_rate > 0:
+            stamp_duty = revenue * self.market_config.stamp_duty_rate
+        total_revenue = revenue - commission - stamp_duty
 
-        # 计算 PnL
         cost_basis = quantity * self.position.avg_cost
         pnl = total_revenue - cost_basis
 
         self.cash += total_revenue
         self.position.quantity -= quantity
+        if self.position.quantity == 0:
+            self.position.avg_cost = 0.0
+            self.position.last_buy_time = None
 
-        self.trades.append(Trade(
-            symbol=symbol, side="sell", quantity=quantity,
-            price=price, time=self.current_bar.timestamp,
-            commission=commission, pnl=pnl, tag=tag,
-        ))
+        self.trades.append(
+            Trade(
+                symbol=symbol,
+                side="sell",
+                quantity=quantity,
+                price=price,
+                time=self.current_bar.timestamp,
+                commission=commission + stamp_duty,
+                pnl=pnl,
+                tag=tag,
+            )
+        )
 
     def close_position(self, symbol: str, tag: str = ""):
         """平仓"""
-        symbol_position = self.position.symbol
         if self.position.quantity > 0:
-            self.sell(symbol=symbol_position, quantity=self.position.quantity, tag=tag)
+            self.sell(symbol=self.position.symbol, quantity=self.position.quantity, tag=tag)
 
     def get_position(self, symbol: str) -> int:
         """获取持仓数量"""
         return self.position.quantity
 
+    def _normalize_buy_quantity(self, quantity: int) -> int:
+        lot_size = self.market_config.lot_size
+        if quantity <= 0:
+            return 0
+        if not lot_size or lot_size <= 1:
+            return quantity
+        return (quantity // lot_size) * lot_size
+
+    def _normalize_sell_quantity(self, quantity: int) -> int:
+        lot_size = self.market_config.lot_size
+        if quantity <= 0:
+            return 0
+        if not lot_size or lot_size <= 1:
+            return quantity
+        if quantity == self.position.quantity:
+            return quantity
+        return (quantity // lot_size) * lot_size
+
+    def _is_t_plus_one_blocked(self) -> bool:
+        if not self.market_config.t_plus_one or not self.current_bar or not self.position.last_buy_time:
+            return False
+        return self.position.last_buy_time.date() >= self.current_bar.timestamp.date()
+
     def _validate_data(self):
         if self.data.empty:
             raise ValueError("数据为空")
-        required = ["open", "high", "low", "close"]
-        for col in required:
+        for col in ["open", "high", "low", "close"]:
             if col not in self.data.columns:
                 raise ValueError(f"缺少必需列: {col}")
 
     def _add_indicators(self):
         """预处理技术指标"""
         from backend.crawlers.data_cleaner import USDataCleaner
+
         self.data = USDataCleaner.add_technical_indicators(self.data)
 
     def _iter_bars(self):
@@ -279,11 +330,24 @@ class BacktestEngine:
                 volume=float(row.get("volume", 0)),
                 adjusted_close=float(row.get("adjusted_close", row.get("close", 0))),
                 indicators={
-                    k: float(v) for k, v in row.items()
-                    if k in ["sma_20", "sma_50", "sma_200", "ema_12", "ema_26",
-                             "macd", "macd_signal", "macd_hist", "rsi_14",
-                             "bb_upper", "bb_middle", "bb_lower", "atr_14",
-                             "volume_sma_20"]
+                    k: float(v)
+                    for k, v in row.items()
+                    if k in [
+                        "sma_20",
+                        "sma_50",
+                        "sma_200",
+                        "ema_12",
+                        "ema_26",
+                        "macd",
+                        "macd_signal",
+                        "macd_hist",
+                        "rsi_14",
+                        "bb_upper",
+                        "bb_middle",
+                        "bb_lower",
+                        "atr_14",
+                        "volume_sma_20",
+                    ]
                     and pd.notna(v)
                 },
             )
@@ -303,5 +367,8 @@ class BacktestEngine:
         metrics["total_trades"] = len(self.trades)
         metrics["equity_curve"] = self.equity_curve
         metrics["trades"] = self.trades
+        metrics["market_rules"] = self.market_config.to_dict()
 
         return BacktestResult(status="completed", **metrics)
+
+

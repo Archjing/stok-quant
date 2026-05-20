@@ -13,6 +13,8 @@ from backend.data_manager import DataManager
 from backend.market_data_manager import MarketDataManager
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
 from backend.backtest.engine import BacktestEngine
+from backend.backtest.market_config import get_market_backtest_config
+
 
 from backend.backtest.strategies import (
     SMACrossoverStrategy,
@@ -107,7 +109,20 @@ def _get_backtest_data(symbol: str, years: int, market: str = "US") -> tuple:
     raise HTTPException(404, f"{symbol} 无历史数据: {err or '下载失败'}")
 
 
+@router.get("/market-rules")
+def get_market_rules(market: str = Query("US", description="市场: US|CN|HK")):
+    """获取不同市场的回测规则配置。"""
+    market_code = _api_market(market)
+    config = get_market_backtest_config(market_code)
+    return {
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "rules": config.to_dict(),
+    }
+
+
 @router.post("/run")
+
 def run_backtest(
     symbol: str = Query("AAPL", description="股票代码"),
     strategy: str = Query("sma_crossover", description="策略ID"),
@@ -123,13 +138,17 @@ def run_backtest(
         raise HTTPException(400, f"策略 '{strategy}' 不存在，可用: {list(STRATEGIES.keys())}")
 
     df, data_source_type, _, normalized_symbol = _get_backtest_data(normalized_symbol, years, market_code)
+    market_rules = get_market_backtest_config(market_code)
 
     engine = BacktestEngine(
         data=df,
         strategy_class=strategy_class,
         symbol=normalized_symbol,
         initial_cash=initial_cash,
+        market=market_code,
+        market_config=market_rules,
     )
+
     result = engine.run()
 
     return {
@@ -138,8 +157,10 @@ def run_backtest(
         "market": market_code,
         "currency": get_currency(market_code),
         "symbol": normalized_symbol,
-        "data_source": data_source_type,
+                "data_source": data_source_type,
+        "market_rules": market_rules.to_dict(),
         "start_date": result.start_time,
+
         "end_date": result.end_time,
         "total_bars": result.total_bars,
         "results": {
@@ -179,6 +200,7 @@ def compare_strategies(
     market_code = _api_market(market)
     normalized_symbol = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
     df, data_source_type, _, normalized_symbol = _get_backtest_data(normalized_symbol, years, market_code)
+    market_rules = get_market_backtest_config(market_code)
 
     results = {}
     for sid, sclass in STRATEGIES.items():
@@ -187,7 +209,10 @@ def compare_strategies(
             strategy_class=sclass,
             symbol=normalized_symbol,
             initial_cash=initial_cash,
+            market=market_code,
+            market_config=market_rules,
         )
+
         result = engine.run()
         results[sid] = {
             "total_return_pct": result.total_return_pct,
@@ -197,13 +222,15 @@ def compare_strategies(
             "equity_curve": result.equity_curve[:100],
         }
 
-    return {
+        return {
         "market": market_code,
         "currency": get_currency(market_code),
         "symbol": normalized_symbol,
         "data_source": data_source_type,
+        "market_rules": market_rules.to_dict(),
         "strategies": results,
     }
+
 
 
 @router.get("/status/{symbol}")
