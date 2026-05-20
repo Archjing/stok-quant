@@ -59,6 +59,17 @@ def test_get_market_backtest_config_cn() -> None:
     assert config.price_limit is True
 
 
+def test_get_market_backtest_config_hk_contains_lot_size_overrides() -> None:
+    config = get_market_backtest_config("HK")
+
+    assert config.market == "HK"
+    assert config.currency == "HKD"
+    assert config.lot_size is None
+    assert config.lot_size_overrides["HK.00700"] == 100
+    assert config.lot_size_overrides["HK.00005"] == 400
+    assert config.lot_size_overrides["HK.01398"] == 1000
+
+
 def test_backtest_engine_cn_enforces_lot_size_round_down() -> None:
     engine = BacktestEngine(
         data=_sample_df(),
@@ -238,3 +249,21 @@ def test_backtest_engine_result_contains_market_rules() -> None:
 
     assert result.market_rules["market"] == "HK"
     assert result.market_rules["currency"] == "HKD"
+
+
+
+def test_backtest_engine_hk_enforces_symbol_specific_board_lot_round_down() -> None:
+    engine = BacktestEngine(
+        data=_sample_df(),
+        strategy_class=BuyAndHoldStrategy,
+        symbol="HK.00005",
+        initial_cash=100000,
+        market="HK",
+        market_config=get_market_backtest_config("HK"),
+    )
+
+    engine.current_bar = engine._iter_bars()[0]
+    engine.buy("HK.00005", quantity=450, tag="manual_buy")
+
+    assert engine.position.quantity == 400
+    assert engine.trades[-1].quantity == 400

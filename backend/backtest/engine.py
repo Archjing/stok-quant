@@ -178,21 +178,24 @@ class BacktestEngine:
                     logger.error("策略 on_bar 异常: %s", exc)
                     continue
 
-            equity = self.cash + self.position.market_value
-            self.equity_curve.append(equity)
+                equity = self.cash + self.position.market_value
+                self.equity_curve.append(equity)
 
             self.strategy.on_stop()
             return self._generate_result()
+
         except Exception as exc:
             logger.exception("回测运行失败")
             return BacktestResult(status="failed", error_message=str(exc))
+
 
     def buy(self, symbol: str, quantity: int, price: Optional[float] = None, tag: str = ""):
         """买入"""
         if not self.current_bar:
             return
 
-        quantity = self._normalize_buy_quantity(quantity)
+        quantity = self._normalize_buy_quantity(quantity, symbol)
+
         if quantity <= 0:
             self._record_rejected_signal("buy", symbol, quantity, "invalid_quantity", tag)
             return
@@ -238,7 +241,8 @@ class BacktestEngine:
 
         if self.position.quantity < quantity:
             quantity = self.position.quantity
-        quantity = self._normalize_sell_quantity(quantity)
+        quantity = self._normalize_sell_quantity(quantity, symbol)
+
         if quantity <= 0:
             self._record_rejected_signal("sell", symbol, quantity, "invalid_quantity", tag)
             return
@@ -294,16 +298,16 @@ class BacktestEngine:
         """获取持仓数量"""
         return self.position.quantity
 
-    def _normalize_buy_quantity(self, quantity: int) -> int:
-        lot_size = self.market_config.lot_size
+    def _normalize_buy_quantity(self, quantity: int, symbol: Optional[str] = None) -> int:
+        lot_size = self._get_effective_lot_size(symbol)
         if quantity <= 0:
             return 0
         if not lot_size or lot_size <= 1:
             return quantity
         return (quantity // lot_size) * lot_size
 
-    def _normalize_sell_quantity(self, quantity: int) -> int:
-        lot_size = self.market_config.lot_size
+    def _normalize_sell_quantity(self, quantity: int, symbol: Optional[str] = None) -> int:
+        lot_size = self._get_effective_lot_size(symbol)
         if quantity <= 0:
             return 0
         if not lot_size or lot_size <= 1:
@@ -311,6 +315,14 @@ class BacktestEngine:
         if quantity == self.position.quantity:
             return quantity
         return (quantity // lot_size) * lot_size
+
+    def _get_effective_lot_size(self, symbol: Optional[str] = None) -> Optional[int]:
+        normalized_symbol = symbol or self.symbol
+        overrides = self.market_config.lot_size_overrides or {}
+        if normalized_symbol and normalized_symbol in overrides:
+            return overrides[normalized_symbol]
+        return self.market_config.lot_size
+
 
     def _is_t_plus_one_blocked(self) -> bool:
         if not self.market_config.t_plus_one or not self.current_bar or not self.position.last_buy_time:
