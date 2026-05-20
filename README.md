@@ -11,6 +11,8 @@ demo：[点我试一下吧~](http://39.105.102.5:8081/stocks)
 - **技术指标分析**：内置 SMA、EMA、MACD、RSI、布林带、ATR 等常见指标
 - **策略回测引擎**：支持单策略回测、收益统计、回撤分析、交易记录输出
 - **多策略对比**：可对同一股票运行多种策略并横向比较表现
+- **多市场回测规则**：支持按市场返回交易规则配置，并在回测中应用本地化交易约束
+- **拒绝信号记录**：回测引擎会记录因 T+1、涨跌停、资金不足、无效数量等导致的拒绝信号
 - **懒加载数据机制**：数据库无缓存时自动触发下载，降低首次使用门槛
 - **数据同步管理**：支持全量下载、增量更新、价格刷新和同步状态查看
 - **双语言前端界面**：支持中英文切换
@@ -76,10 +78,16 @@ npm run dev
 docker-compose up --build
 ```
 
-默认容器说明：
+当前默认容器说明：
 
-- `frontend`：对外提供 Web 界面
-- `backend`：提供 FastAPI 接口和数据服务
+- `frontend`：对外提供 Web 界面，默认映射 `8081:80`
+- `backend`：提供 FastAPI 接口和数据服务，默认映射 `8777:8777`
+
+常用访问地址：
+
+- 前端：`http://localhost:8081`
+- 后端文档：`http://localhost:8777/docs`
+- 后端健康检查：`http://localhost:8777/health`
 
 ## 多市场支持
 
@@ -99,12 +107,22 @@ docker-compose up --build
 - 港股：`700` / `00700` / `HK700` / `HK.00700` -> `HK.00700`
 - 美股：`aapl` -> `AAPL`
 
-第一阶段实现说明：
+当前运行时实现说明：
 
-- 美股继续使用原有 `USStock` / `USStockDaily` 数据链路。
-- A 股和港股使用新增 `MarketStock` / `MarketDailyBar` / `MarketSyncStatus` 通用表。
-- A 股和港股默认使用 AkShare，历史行情默认前复权 `qfq`。
-- A 股 / 港股回测当前复用现有回测引擎，暂不模拟 A 股 T+1、100 股一手、涨跌停、印花税，也暂不模拟港股 lot size、印花税和交易费。
+- **统一多市场运行时已落地**：回测、数据读取和状态查询优先走统一市场链路。
+- **美股 US**：继续支持单股单位交易、无 T+1、无涨跌停、无印花税模拟。
+- **A 股 CN**：已实现更真实的交易规则：
+  - 100 股一手
+  - T+1 卖出限制
+  - 卖出印花税
+  - 涨跌停价格边界约束
+  - 一字涨停不可买、一字跌停不可卖
+- **港股 HK**：已实现第一阶段真实规则：
+  - 按股票覆盖 board lot / lot size
+  - 卖出印花税已启用
+  - 更细手续费模型仍在后续计划中
+
+可通过接口 `GET /api/backtest/market-rules?market=US|CN|HK` 查看当前市场规则配置。
 
 ## 项目结构
 
@@ -181,6 +199,21 @@ docker-compose up --build
 - 盈亏比
 - 交易明细
 - 资金曲线与回撤曲线
+- 市场规则快照（`market_rules`）
+
+当前市场规则实现进度：
+
+- **US**：默认单位股、无 T+1、无涨跌停、无印花税模拟
+- **CN**：100 股整数手、T+1、卖出印花税、涨跌停执行边界、涨停/跌停一字板成交限制
+- **HK**：按股票 board lot 映射进行数量归整，卖出印花税已启用
+
+回测引擎内部会记录 `rejected_signals`，用于标记以下拒绝原因：
+
+- `invalid_quantity`
+- `insufficient_cash`
+- `t_plus_one`
+- `price_limit_up_locked`
+- `price_limit_down_locked`
 
 ## 主要接口
 
@@ -195,10 +228,17 @@ docker-compose up --build
 ### 回测接口
 
 - `GET /api/backtest/strategies`：获取可用策略列表
+- `GET /api/backtest/market-rules?market=US|CN|HK`：获取当前市场回测规则配置
 - `POST /api/backtest/run?market=US|CN|HK`：执行单策略回测
 - `POST /api/backtest/compare?market=US|CN|HK`：多策略对比
 - `GET /api/backtest/status/{symbol}?market=US|CN|HK`：查看股票数据状态
-- `POST /api/backtest/warmup?market=US|CN|HK`：预热下载指定股票数据
+- `POST /api/backtest/warmup?market=US|CN|HK`：预热下载指定股票
+
+说明：
+
+- `/run` 当前会返回 `market_rules`、指标结果、资金曲线、回撤曲线和交易记录
+- 回测引擎内部已经生成 `rejected_signals`，但当前 `/run` 和 `/compare` 响应尚未完整暴露该字段
+  数据
 
 ### 数据同步接口
 
@@ -223,14 +263,19 @@ docker-compose up --build
 - 数据来自 Yahoo Finance 和 AkShare，可能存在延迟、缺失、接口调整或访问频率限制
 - 首次请求某些股票时，可能因懒下载机制产生等待时间
 - 若进行批量下载，建议控制调用频率，避免触发数据源限流
-- A 股 / 港股回测第一阶段复用统一回测引擎，不包含完整本地交易制度和费用模型
+- 当前多市场回测规则仍在持续增强中，港股更细手续费模型尚未完成
 - SQLite 适合单机开发与中小规模使用，生产环境可考虑替换为更强的数据库方案
+- Docker 默认前端映射端口为 `8081`，后端映射端口为 `8777`
+- 如部署后前端出现白屏，优先确认是否使用最新代码重新构建前端镜像，并检查浏览器控制台与容器日志
 
 ## 测试
 
 ```bash
 # 运行 Python 测试
 uv run pytest
+
+# 运行指定多市场回测规则测试
+uv run pytest tests/test_backtest_market_rules.py -q
 
 # 运行前端类型检查和构建
 cd frontend
@@ -243,6 +288,9 @@ npm run build
 - CN/HK 数据源字段标准化和样本池
 - `MarketDataManager` 基础工具和列表种子化
 - 多市场股票 / K 线 / 回测状态 API 响应结构
+- A 股回测规则：100 股一手、T+1、涨跌停边界与一字板限制
+- 港股回测规则：board lot 映射与数量归整
+- 回测结果包含 `market_rules`
 
 ## License
 
