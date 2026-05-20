@@ -2,8 +2,10 @@
 """
 股票数据 API
 
-默认 market=US 保持原美股行为；CN/HK 走多市场 MarketDataManager。
+多市场统一使用 MarketDataManager 读取通用表；
+US 的财务详情仍保留 yfinance 直连作为补充信息源。
 """
+
 import logging
 from typing import Optional
 from datetime import datetime
@@ -12,8 +14,8 @@ from fastapi import APIRouter, Query, HTTPException
 from backend.crawlers.us_stock_source import USStockSource, MAJOR_US_STOCKS, STOCK_NAMES, SECTOR_MAP
 
 from backend.crawlers.data_cleaner import USDataCleaner
-from backend.data_manager import DataManager
 from backend.market_data_manager import MarketDataManager
+
 from backend.markets.registry import get_market_source
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
 
@@ -21,8 +23,8 @@ from backend.markets.symbols import get_currency, normalize_market, normalize_sy
 router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 logger = logging.getLogger(__name__)
 data_source = USStockSource()
-data_mgr = DataManager(request_delay=0.6)
 market_mgr = MarketDataManager(request_delay=0.6)
+
 
 
 
@@ -79,7 +81,7 @@ def _apply_text_search(stocks: list[dict], query: Optional[str]) -> list[dict]:
 
 
 def _market_daily_payload(market: str, symbol: str, rows, source: str, indicators: bool = False) -> dict:
-    """构建 CN/HK daily 响应。"""
+    """构建统一 daily 响应。"""
     df = market_mgr.rows_to_dataframe(rows)
     df = USDataCleaner.clean_daily_data(df)
     if indicators:
@@ -94,6 +96,7 @@ def _market_daily_payload(market: str, symbol: str, rows, source: str, indicator
         "source": source,
         "data": df.fillna("").to_dict(orient="records"),
     }
+
 
 
 
@@ -204,34 +207,17 @@ def list_stocks(
 ):
     """获取股票列表（支持 US/CN/HK）"""
     market_code = _api_market(market)
+    stocks = market_mgr.get_stock_list(market_code)
     if market_code != "US":
-        stocks = market_mgr.get_stock_list(market_code)
         stocks = _filter_market_stocks(stocks, market_code, filter_type, filter_value)
-        stocks = _apply_text_search(stocks, search)
-        total = len(stocks)
-        page = stocks[offset:offset + limit]
-        return {
-            "market": market_code,
-            "currency": get_currency(market_code),
-            "total": total,
-            "data": page,
-            "filter_type": filter_type,
-            "filter_value": filter_value,
-        }
-
-    try:
-        stocks = data_mgr.get_stock_list()
-    except Exception as exc:
-        logger.warning("美股数据库列表读取失败，使用静态列表: %s", exc)
-        stocks = _static_us_stock_list()
-
-    stocks = _apply_us_filters(stocks, filter_type, filter_value)
+    else:
+        stocks = _apply_us_filters(stocks, filter_type, filter_value)
     stocks = _apply_text_search(stocks, search)
     total = len(stocks)
     page = stocks[offset:offset + limit]
     return {
-        "market": "US",
-        "currency": "USD",
+        "market": market_code,
+        "currency": get_currency(market_code),
         "total": total,
         "data": page,
         "filter_type": filter_type,
@@ -242,15 +228,15 @@ def list_stocks(
 
 
 
+
 @router.get("/symbols")
 def get_symbols(market: str = Query("US", description="市场: US|CN|HK")):
     """获取所有支持的股票代码"""
     market_code = _api_market(market)
-    if market_code != "US":
-        stocks = market_mgr.get_stock_list(market_code)
-        symbols = [s["symbol"] for s in stocks]
-        return {"market": market_code, "symbols": symbols, "total": len(symbols)}
-    return {"market": "US", "symbols": MAJOR_US_STOCKS, "total": len(MAJOR_US_STOCKS)}
+    stocks = market_mgr.get_stock_list(market_code)
+    symbols = [s["symbol"] for s in stocks]
+    return {"market": market_code, "symbols": symbols, "total": len(symbols)}
+
 
 
 
@@ -263,66 +249,22 @@ def get_stock_daily(
     indicators: bool = Query(False),
     market: str = Query("US", description="市场: US|CN|HK"),
 ):
-    """获取日线数据（US 保持旧逻辑；CN/HK 使用 MarketDataManager）"""
+    """获取日线数据（统一使用 MarketDataManager）"""
     market_code = _api_market(market)
-    if market_code != "US":
-        sym = normalize_symbol(symbol, market_code)
+    sym = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
+    db_rows = market_mgr.get_daily_from_db(market_code, sym, years=years)
+    source = "db"
+    if not db_rows:
+        ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=years)
+        if not ok:
+            raise HTTPException(404, f"股票 {symbol} 无日线数据: {err}")
         db_rows = market_mgr.get_daily_from_db(market_code, sym, years=years)
-        source = "db"
-        if not db_rows:
-            ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=years)
-            if not ok:
-                raise HTTPException(404, f"股票 {symbol} 无日线数据: {err}")
-            db_rows = market_mgr.get_daily_from_db(market_code, sym, years=years)
-            source = "akshare"
-        if not db_rows:
-            raise HTTPException(404, f"股票 {symbol} 无日线数据")
-        return _market_daily_payload(market_code, sym, db_rows, source, indicators=indicators)
-
-    sym = symbol.upper()
-
-    db_rows = data_mgr.get_daily_from_db(sym, years=years)
-    if db_rows:
-        return {
-            "symbol": sym,
-            "total": len(db_rows),
-            "start_date": str(db_rows[0].date),
-            "end_date": str(db_rows[-1].date),
-            "source": "db",
-            "data": [
-                {
-                    "date": str(r.date),
-                    "open": r.open, "high": r.high, "low": r.low,
-                    "close": r.close, "volume": r.volume,
-                    "adjusted_close": r.adjusted_close,
-                    "sma_20": r.sma_20, "sma_50": r.sma_50, "sma_200": r.sma_200,
-                    "ema_12": r.ema_12, "ema_26": r.ema_26,
-                    "macd": r.macd, "macd_signal": r.macd_signal, "macd_hist": r.macd_hist,
-                    "rsi_14": r.rsi_14,
-                    "bb_upper": r.bb_upper, "bb_middle": r.bb_middle, "bb_lower": r.bb_lower,
-                    "atr_14": r.atr_14, "volume_sma_20": r.volume_sma_20,
-                }
-                for r in db_rows
-            ],
-        }
-
-    logger.info(f"{sym} 数据库无缓存，从 yfinance 实时获取")
-    df = data_source.get_full_history(sym, years=years)
-    if df.empty:
+        source = "downloaded"
+    if not db_rows:
         raise HTTPException(404, f"股票 {symbol} 无日线数据")
+    return _market_daily_payload(market_code, sym, db_rows, source, indicators=indicators)
 
-    df = USDataCleaner.clean_daily_data(df)
-    if indicators:
-        df = USDataCleaner.add_technical_indicators(df)
 
-    return {
-        "symbol": sym,
-        "total": len(df),
-        "start_date": str(df["date"].iloc[0]) if "date" in df.columns else None,
-        "end_date": str(df["date"].iloc[-1]) if "date" in df.columns else None,
-        "source": "yfinance",
-        "data": df.fillna("").to_dict(orient="records"),
-    }
 
 
 
@@ -342,130 +284,60 @@ def get_stock_kline(
     if period not in {"daily", "monthly", "yearly"}:
         raise HTTPException(400, "period 仅支持 daily|monthly|yearly")
 
-    if market_code != "US":
-        import pandas as pd
-        sym = normalize_symbol(symbol, market_code)
-        query_years = max(years, 10) if period == "yearly" else years
+    import pandas as pd
+
+    sym = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
+    query_years = max(years, 10) if period == "yearly" else max(years, 5) if period == "monthly" else years
+    db_rows = market_mgr.get_daily_from_db(market_code, sym, years=query_years)
+    source_label = "db"
+    if not db_rows:
+        ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=query_years)
+        if not ok:
+            raise HTTPException(404, f"股票 {symbol} K线数据获取失败: {err}")
         db_rows = market_mgr.get_daily_from_db(market_code, sym, years=query_years)
-        source_label = "db"
-        if not db_rows:
-            ok, _, err = market_mgr.lazy_download_one(market_code, sym, years=query_years)
-            if not ok:
-                raise HTTPException(404, f"股票 {symbol} K线数据获取失败: {err}")
-            db_rows = market_mgr.get_daily_from_db(market_code, sym, years=query_years)
-            source_label = "akshare"
-        if not db_rows:
-            raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
+        source_label = "downloaded"
+    if not db_rows:
+        raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
 
-        df = market_mgr.rows_to_dataframe(db_rows)
-        if period == "daily":
-            return {
-                "market": market_code,
-                "currency": get_currency(market_code),
-                "symbol": sym,
-                "period": "daily",
-                "source": source_label,
-                "data": [
-                    {"x": date_to_timestamp(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for r in df.to_dict(orient="records")
-                ],
-            }
-
-        freq = "M" if period == "monthly" else "Y"
-        df["date"] = pd.to_datetime(df["date"])
-        df["period"] = df["date"].dt.to_period(freq)
-        data = []
-        for _, group in df.groupby("period"):
-            row = group.iloc[0]
-            data.append({
-                "x": int(row["date"].timestamp() * 1000),
-                "y": [
-                    float(group["open"].iloc[0]),
-                    float(group["high"].max()),
-                    float(group["low"].min()),
-                    float(group["close"].iloc[-1]),
-                ],
-            })
+    df = market_mgr.rows_to_dataframe(db_rows)
+    if period == "daily":
         return {
             "market": market_code,
             "currency": get_currency(market_code),
             "symbol": sym,
-            "period": period,
+            "period": "daily",
             "source": source_label,
-            "data": data,
+            "data": [
+                {"x": date_to_timestamp(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
+                for r in df.to_dict(orient="records")
+            ],
         }
 
-    sym = symbol.upper()
-
-
-    if period == "daily":
-        db_rows = data_mgr.get_daily_from_db(sym, years=years)
-        if db_rows:
-            return {
-                "symbol": sym,
-                "period": "daily",
-                "source": "db",
-                "data": [
-                    {"x": date_to_timestamp(r.date), "y": [r.open, r.high, r.low, r.close]}
-                    for r in db_rows
-                ],
-            }
-        logger.info(f"{sym} 日线数据库无缓存，从 yfinance 实时获取")
-        df = data_source.get_full_history(sym, years=years)
-        if not df.empty:
-            return {
-                "symbol": sym,
-                "period": "daily",
-                "source": "yfinance",
-                "data": [
-                    {"x": date_to_timestamp(r["date"]), "y": [r["open"], r["high"], r["low"], r["close"]]}
-                    for r in df.to_dict(orient="records")
-                ],
-            }
-
-    else:
-        # monthly 或 yearly：按周期分组，用第一个交易日的时间戳
-        import pandas as pd
-        freq = "M" if period == "monthly" else "Y"
-        min_years = 5 if period == "monthly" else 10
-        db_rows = data_mgr.get_daily_from_db(sym, years=max(years, min_years))
-        source_label = "db"
-        if db_rows:
-            df = pd.DataFrame([
-                {"date": r.date, "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume}
-                for r in db_rows
-            ])
-        else:
-            logger.info(f"{sym} {period} 数据库无缓存，从 yfinance 实时获取")
-            df = data_source.get_full_history(sym, years=max(years, min_years))
-            if df.empty:
-                raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
-            source_label = "yfinance"
-            df["date"] = pd.to_datetime(df["date"])
-
-        df["date"] = pd.to_datetime(df["date"])
-        df["period"] = df["date"].dt.to_period(freq)
-        grouped = df.groupby("period")
-        data = []
-        for _, group in grouped:
-            row = group.iloc[0]
-            x_val = int(row["date"].timestamp() * 1000)
-            y_val = [
+    freq = "M" if period == "monthly" else "Y"
+    df["date"] = pd.to_datetime(df["date"])
+    df["period"] = df["date"].dt.to_period(freq)
+    data = []
+    for _, group in df.groupby("period"):
+        row = group.iloc[0]
+        data.append({
+            "x": int(row["date"].timestamp() * 1000),
+            "y": [
                 float(group["open"].iloc[0]),
                 float(group["high"].max()),
                 float(group["low"].min()),
                 float(group["close"].iloc[-1]),
-            ]
-            data.append({"x": x_val, "y": y_val})
+            ],
+        })
+    return {
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "symbol": sym,
+        "period": period,
+        "source": source_label,
+        "data": data,
+    }
 
-        return {
-            "symbol": sym,
-            "period": period,
-            "source": source_label,
-            "data": data,
-        }
 
-    raise HTTPException(404, f"股票 {symbol} K线数据获取失败")
 
 
 @router.get("/{symbol}/financials")
@@ -489,17 +361,22 @@ def get_stock_financials(symbol: str, market: str = Query("US", description="市
 def get_stock_detail(symbol: str, market: str = Query("US", description="市场: US|CN|HK")):
     """获取股票详情"""
     market_code = _api_market(market)
+    sym = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
+    stocks = market_mgr.get_stock_list(market_code)
+    info = next((item for item in stocks if item.get("symbol") == sym), None)
+    if info:
+        return info
     if market_code != "US":
         source = get_market_source(market_code)
-        sym = normalize_symbol(symbol, market_code)
         info = source.get_stock_info(sym)
         if not info:
             raise HTTPException(404, f"股票 {symbol} 未找到")
         return info
-    info = data_source.get_stock_info(symbol.upper())
+    info = data_source.get_stock_info(sym)
     if not info:
         raise HTTPException(404, f"股票 {symbol} 未找到")
     return info
+
 
 
 

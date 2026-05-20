@@ -1,7 +1,9 @@
 """
 多市场数据管理器。
 
-第一阶段仅服务 CN/HK；US 继续使用现有 DataManager。
+当前支持 US/CN/HK：
+- CN/HK 使用统一 MarketSource
+- US 在 16.3 阶段切换为读取通用表 MarketStock / MarketDailyBar / MarketSyncStatus
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from typing import Any
 import pandas as pd
 
 from backend.crawlers.data_cleaner import USDataCleaner
+from backend.crawlers.us_stock_source import MAJOR_US_STOCKS, SECTOR_MAP, STOCK_NAMES, USStockSource
 from backend.database import Base, SessionLocal, engine
 from backend.markets.registry import get_market_source
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
@@ -31,20 +34,21 @@ class MarketDownloadConfig:
 
 
 class MarketDataManager:
-    """CN/HK 多市场数据管理器。"""
+    """US/CN/HK 多市场通用数据管理器。"""
 
     def __init__(self, request_delay: float = MarketDownloadConfig.REQUEST_DELAY, history_years: int = 10):
         self.request_delay = request_delay
         self.history_years = history_years
         self.config = MarketDownloadConfig()
+        self.us_source = USStockSource()
         Base.metadata.create_all(bind=engine)
 
     # ==========================================================
     # 股票列表
     # ==========================================================
     def get_stock_list(self, market: str) -> list[dict[str, Any]]:
-        """获取市场股票列表，优先读取 DB，无缓存时从数据源种子化。"""
-        market_code = self._new_market(market)
+        """获取市场股票列表，优先读取 DB，无缓存时从数据源或静态样本种子化。"""
+        market_code = self._normalize_market(market)
         self._ensure_stocks_seeded(market_code)
         return self._read_stock_list_from_db(market_code)
 
@@ -56,13 +60,16 @@ class MarketDataManager:
             if exists:
                 return
 
-            source = get_market_source(market)
-            if market == "CN" and hasattr(source, "_sample_stock_list"):
-                stocks = source._sample_stock_list()
-            elif market == "HK" and hasattr(source, "_sample_stock_list"):
-                stocks = source._sample_stock_list()
+            if market == "US":
+                stocks = self._sample_us_stock_list()
             else:
-                stocks = source.get_stock_list()
+                source = get_market_source(market)
+                if market == "CN" and hasattr(source, "_sample_stock_list"):
+                    stocks = source._sample_stock_list()
+                elif market == "HK" and hasattr(source, "_sample_stock_list"):
+                    stocks = source._sample_stock_list()
+                else:
+                    stocks = source.get_stock_list()
             for item in stocks:
                 stock = MarketStock(
                     market=market,
@@ -105,17 +112,20 @@ class MarketDataManager:
     # ==========================================================
     def lazy_download_one(self, market: str, symbol: str, years: int | None = None, adjust: str = "qfq") -> tuple[bool, int, str | None]:
         """按需下载单只股票历史日线并入库。"""
-        market_code = self._new_market(market)
-        normalized = normalize_symbol(symbol, market_code)
+        market_code = self._normalize_market(market)
+        normalized = self._normalize_market_symbol(symbol, market_code)
         years = years or self.history_years
         session = SessionLocal()
         try:
-            source = get_market_source(market_code)
             self._update_sync_record(session, market_code, normalized, date.today(), 0, "syncing")
             session.commit()
 
             time.sleep(self.request_delay)
-            df = source.get_full_history(normalized, years=years, adjust=adjust)
+            if market_code == "US":
+                df = self.us_source.get_full_history(normalized, years=years)
+            else:
+                source = get_market_source(market_code)
+                df = source.get_full_history(normalized, years=years, adjust=adjust)
             if df is None or df.empty:
                 self._update_sync_record(session, market_code, normalized, date.today(), 0, "error", "no_data")
                 session.commit()
@@ -145,10 +155,10 @@ class MarketDataManager:
 
     def download_all(self, market: str, symbols: list[str] | None = None, years: int | None = None, adjust: str = "qfq") -> dict[str, Any]:
         """批量下载指定市场股票。"""
-        market_code = self._new_market(market)
+        market_code = self._normalize_market(market)
         if symbols is None:
             symbols = [item["symbol"] for item in self.get_stock_list(market_code)]
-        targets = [normalize_symbol(sym, market_code) for sym in symbols]
+        targets = [self._normalize_market_symbol(sym, market_code) for sym in symbols]
         results: dict[str, Any] = {"market": market_code, "success": 0, "failed": 0, "total_rows": 0, "errors": []}
 
         for index, sym in enumerate(targets, 1):
@@ -165,13 +175,13 @@ class MarketDataManager:
 
     def incremental_update(self, market: str, symbols: list[str] | None = None, adjust: str = "qfq") -> dict[str, Any]:
         """增量更新过期或缺失数据。"""
-        market_code = self._new_market(market)
+        market_code = self._normalize_market(market)
         if symbols is None:
             symbols = [item["symbol"] for item in self.get_stock_list(market_code)]
         results = {"market": market_code, "updated": 0, "no_change": 0, "skipped": 0, "new_rows": 0}
 
         for sym in symbols:
-            normalized = normalize_symbol(sym, market_code)
+            normalized = self._normalize_market_symbol(sym, market_code)
             status = self._check_data_freshness(market_code, normalized)
             if status == "ok":
                 results["no_change"] += 1
@@ -186,9 +196,12 @@ class MarketDataManager:
 
     def refresh_stock_prices(self, market: str) -> int:
         """刷新股票价格。第一阶段以重新拉取列表价格为主，失败不影响历史数据。"""
-        market_code = self._new_market(market)
-        source = get_market_source(market_code)
-        stocks = source.get_stock_list()
+        market_code = self._normalize_market(market)
+        if market_code == "US":
+            stocks = self.us_source.get_stock_list()
+        else:
+            source = get_market_source(market_code)
+            stocks = source.get_stock_list()
         session = SessionLocal()
         try:
             count = 0
@@ -210,7 +223,7 @@ class MarketDataManager:
 
     def backfill_technical_indicators(self, market: str, symbols: list[str] | None = None) -> dict[str, Any]:
         """批量回填指定市场历史日线的技术指标。"""
-        market_code = self._new_market(market)
+        market_code = self._normalize_market(market)
         targets = self._get_backfill_targets(market_code, symbols)
         results: dict[str, Any] = {
             "market": market_code,
@@ -242,8 +255,8 @@ class MarketDataManager:
     # ==========================================================
     def get_daily_from_db(self, market: str, symbol: str, years: int = 5) -> list[MarketDailyBar] | None:
         """从 DB 获取历史日线。"""
-        market_code = self._new_market(market)
-        normalized = normalize_symbol(symbol, market_code)
+        market_code = self._normalize_market(market)
+        normalized = self._normalize_market_symbol(symbol, market_code)
         session = SessionLocal()
         try:
             cutoff = date.today() - timedelta(days=years * 365)
@@ -258,7 +271,7 @@ class MarketDataManager:
 
     def get_sync_summary(self, market: str) -> list[dict[str, Any]]:
         """获取同步状态汇总。"""
-        market_code = self._new_market(market)
+        market_code = self._normalize_market(market)
         session = SessionLocal()
         try:
             rows = session.query(MarketSyncStatus).filter_by(market=market_code).order_by(MarketSyncStatus.symbol).all()
@@ -279,10 +292,10 @@ class MarketDataManager:
 
     def get_missing_symbols(self, market: str, symbols: list[str] | None = None) -> list[str]:
         """获取缺少历史数据的股票。"""
-        market_code = self._new_market(market)
+        market_code = self._normalize_market(market)
         if symbols is None:
             symbols = [item["symbol"] for item in self.get_stock_list(market_code)]
-        targets = [normalize_symbol(sym, market_code) for sym in symbols]
+        targets = [self._normalize_market_symbol(sym, market_code) for sym in symbols]
         session = SessionLocal()
         try:
             synced = {
@@ -348,8 +361,11 @@ class MarketDataManager:
 
     def _upsert_stock_from_source(self, session, market: str, symbol: str) -> None:
         """从数据源基础信息补齐 MarketStock。"""
-        source = get_market_source(market)
-        info = source.get_stock_info(symbol) or {}
+        if market == "US":
+            info = self.us_source.get_stock_info(symbol) or {}
+        else:
+            source = get_market_source(market)
+            info = source.get_stock_info(symbol) or {}
         rec = MarketStock(
             market=market,
             symbol=symbol,
@@ -439,7 +455,7 @@ class MarketDataManager:
 
     def _get_backfill_targets(self, market: str, symbols: list[str] | None = None) -> list[str]:
         if symbols:
-            return [normalize_symbol(sym, market) for sym in symbols]
+            return [self._normalize_market_symbol(sym, market) for sym in symbols]
 
         session = SessionLocal()
         try:
@@ -574,9 +590,35 @@ class MarketDataManager:
         except (TypeError, ValueError):
             return None
 
+    def _sample_us_stock_list(self) -> list[dict[str, Any]]:
+        nasdaq_symbols = {
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+            "ADBE", "AMD", "INTC", "NFLX", "PYPL", "BIDU", "PDD",
+        }
+        return [
+            {
+                "symbol": symbol,
+                "raw_symbol": symbol,
+                "name": STOCK_NAMES.get(symbol, symbol),
+                "exchange": "NASDAQ" if symbol in nasdaq_symbols else "NYSE",
+                "sector": SECTOR_MAP.get(symbol),
+                "country": "US",
+                "currency": "USD",
+                "price": None,
+                "change_pct": None,
+                "market_cap": None,
+                "pe_ratio": None,
+                "pb_ratio": None,
+                "dividend_yield": None,
+                "turnover_rate": None,
+            }
+            for symbol in MAJOR_US_STOCKS
+        ]
+
     @staticmethod
-    def _new_market(market: str) -> str:
-        market_code = normalize_market(market)
-        if market_code == "US":
-            raise ValueError("MarketDataManager only manages CN/HK in the first migration phase")
-        return market_code
+    def _normalize_market_symbol(symbol: str, market: str) -> str:
+        return str(symbol).strip().upper() if market == "US" else normalize_symbol(symbol, market)
+
+    @staticmethod
+    def _normalize_market(market: str) -> str:
+        return normalize_market(market)

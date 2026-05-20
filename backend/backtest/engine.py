@@ -83,7 +83,9 @@ class Bar:
     close: float
     volume: float
     adjusted_close: float = None
+    prev_close: Optional[float] = None
     indicators: Dict[str, float] = field(default_factory=dict)
+
 
     @property
     def timestamp_str(self) -> str:
@@ -117,8 +119,10 @@ class BacktestResult:
     trades: List[Trade] = field(default_factory=list)
     monthly_returns: Dict[str, float] = field(default_factory=dict)
     market_rules: Dict[str, Any] = field(default_factory=dict)
+    rejected_signals: List[Dict[str, Any]] = field(default_factory=list)
     status: str = "completed"
     error_message: str = ""
+
 
 
 class BacktestEngine:
@@ -148,9 +152,11 @@ class BacktestEngine:
         self.position = Position(symbol=symbol)
         self.equity_curve: List[float] = []
         self.trades: List[Trade] = []
+        self.rejected_signals: List[Dict[str, Any]] = []
         self.current_bar: Optional[Bar] = None
         self.strategy: Optional[Strategy] = None
         self._indicator_cache: Dict[str, Any] = {}
+
 
     def run(self) -> BacktestResult:
         """运行回测"""
@@ -172,8 +178,8 @@ class BacktestEngine:
                     logger.error("策略 on_bar 异常: %s", exc)
                     continue
 
-                equity = self.cash + self.position.market_value
-                self.equity_curve.append(equity)
+            equity = self.cash + self.position.market_value
+            self.equity_curve.append(equity)
 
             self.strategy.on_stop()
             return self._generate_result()
@@ -188,16 +194,23 @@ class BacktestEngine:
 
         quantity = self._normalize_buy_quantity(quantity)
         if quantity <= 0:
+            self._record_rejected_signal("buy", symbol, quantity, "invalid_quantity", tag)
+            return
+        if self._is_price_limit_buy_blocked():
+            logger.debug("涨跌停限制生效，A 股涨停一字板当日不可买入")
+            self._record_rejected_signal("buy", symbol, quantity, "price_limit_up_locked", tag)
             return
 
         if price is None:
             price = self.current_bar.close * (1 + self.slippage)
+        price = self._normalize_execution_price("buy", price)
 
         cost = quantity * price
         commission = cost * self.commission
         total_cost = cost + commission
         if total_cost > self.cash:
             logger.debug("现金不足: 需要 %.2f, 可用 %.2f", total_cost, self.cash)
+            self._record_rejected_signal("buy", symbol, quantity, "insufficient_cash", tag)
             return
 
         self.cash -= total_cost
@@ -227,13 +240,20 @@ class BacktestEngine:
             quantity = self.position.quantity
         quantity = self._normalize_sell_quantity(quantity)
         if quantity <= 0:
+            self._record_rejected_signal("sell", symbol, quantity, "invalid_quantity", tag)
             return
         if self._is_t_plus_one_blocked():
             logger.debug("T+1 限制生效，当日买入仓位不可卖出")
+            self._record_rejected_signal("sell", symbol, quantity, "t_plus_one", tag)
+            return
+        if self._is_price_limit_sell_blocked():
+            logger.debug("涨跌停限制生效，A 股跌停一字板当日不可卖出")
+            self._record_rejected_signal("sell", symbol, quantity, "price_limit_down_locked", tag)
             return
 
         if price is None:
             price = self.current_bar.close * (1 - self.slippage)
+        price = self._normalize_execution_price("sell", price)
 
         revenue = quantity * price
         commission = revenue * self.commission
@@ -263,6 +283,7 @@ class BacktestEngine:
                 tag=tag,
             )
         )
+
 
     def close_position(self, symbol: str, tag: str = ""):
         """平仓"""
@@ -296,7 +317,65 @@ class BacktestEngine:
             return False
         return self.position.last_buy_time.date() >= self.current_bar.timestamp.date()
 
+    def _record_rejected_signal(self, side: str, symbol: str, quantity: int, reason: str, tag: str = "") -> None:
+        if not self.current_bar:
+            return
+        self.rejected_signals.append(
+            {
+                "time": self.current_bar.timestamp,
+                "symbol": symbol,
+                "side": side,
+                "quantity": quantity,
+                "reason": reason,
+                "tag": tag,
+            }
+        )
+
+    def _price_limit_bounds(self) -> tuple[Optional[float], Optional[float]]:
+        if not self.current_bar or not self.market_config.price_limit:
+            return None, None
+        if not self.current_bar.prev_close or self.current_bar.prev_close <= 0:
+            return None, None
+
+        pct = float(self.market_config.price_limit_pct or 0)
+        prev_close = float(self.current_bar.prev_close)
+        limit_up = prev_close * (1 + pct)
+        limit_down = prev_close * (1 - pct)
+        return limit_up, limit_down
+
+    def _normalize_execution_price(self, side: str, price: float) -> float:
+        limit_up, limit_down = self._price_limit_bounds()
+        if side == "buy" and limit_up is not None:
+            return min(price, limit_up)
+        if side == "sell" and limit_down is not None:
+            return max(price, limit_down)
+        return price
+
+    def _is_price_limit_buy_blocked(self) -> bool:
+        if not self.current_bar or not self.market_config.price_limit:
+            return False
+
+        limit_up, _ = self._price_limit_bounds()
+        if limit_up is None:
+            return False
+
+        eps = max(abs(limit_up) * 1e-6, 1e-8)
+        return self.current_bar.low >= limit_up - eps and self.current_bar.close >= limit_up - eps
+
+    def _is_price_limit_sell_blocked(self) -> bool:
+        if not self.current_bar or not self.market_config.price_limit:
+            return False
+
+        _, limit_down = self._price_limit_bounds()
+        if limit_down is None:
+            return False
+
+        eps = max(abs(limit_down) * 1e-6, 1e-8)
+        return self.current_bar.high <= limit_down + eps and self.current_bar.close <= limit_down + eps
+
+
     def _validate_data(self):
+
         if self.data.empty:
             raise ValueError("数据为空")
         for col in ["open", "high", "low", "close"]:
@@ -312,6 +391,7 @@ class BacktestEngine:
     def _iter_bars(self):
         """迭代K线"""
         bars = []
+        prev_close: Optional[float] = None
         for _, row in self.data.iterrows():
             if "date" in row or "Date" in row:
                 ts = pd.to_datetime(row.get("date") or row.get("Date"))
@@ -320,15 +400,17 @@ class BacktestEngine:
             else:
                 continue
 
+            close = float(row.get("close", 0))
             bar = Bar(
                 symbol=self.symbol,
                 timestamp=ts.to_pydatetime(),
                 open=float(row.get("open", 0)),
                 high=float(row.get("high", 0)),
                 low=float(row.get("low", 0)),
-                close=float(row.get("close", 0)),
+                close=close,
                 volume=float(row.get("volume", 0)),
                 adjusted_close=float(row.get("adjusted_close", row.get("close", 0))),
+                prev_close=prev_close,
                 indicators={
                     k: float(v)
                     for k, v in row.items()
@@ -352,7 +434,9 @@ class BacktestEngine:
                 },
             )
             bars.append(bar)
+            prev_close = close
         return bars
+
 
     def _generate_result(self) -> BacktestResult:
         """生成回测结果"""
@@ -368,7 +452,9 @@ class BacktestEngine:
         metrics["equity_curve"] = self.equity_curve
         metrics["trades"] = self.trades
         metrics["market_rules"] = self.market_config.to_dict()
+        metrics["rejected_signals"] = self.rejected_signals
 
         return BacktestResult(status="completed", **metrics)
+
 
 

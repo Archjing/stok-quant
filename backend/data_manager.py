@@ -1,7 +1,18 @@
 """
-数据管理器 - 懒人下载策略
-核心原则：只在需要时下载，下载时遵守限流规则
+Legacy US data manager.
+
+说明：
+- 本模块已不再用于 backend 主运行链路。
+- US/CN/HK 当前统一通过 `backend.market_data_manager.MarketDataManager`
+  读写 `MarketStock / MarketDailyBar / MarketSyncStatus`。
+- 本模块保留的目的仅包括：
+  1. 16.3 迁移脚本的数据来源
+  2. 历史兼容测试
+  3. 必要时的人工迁移/排障参考
+
+除上述场景外，请勿在新的运行时功能中继续依赖本模块。
 """
+
 import time
 import random
 import logging
@@ -63,14 +74,14 @@ PRICE_CACHE_TTL = 300  # 价格缓存 5 分钟
 
 class DataManager:
     """
-    懒人数据管理器
-    
-    核心策略：
-    1. 优先从数据库读取 - 避免不必要的网络请求
-    2. 按需下载 - 只在需要时下载数据
-    3. 智能限流 - 遵守 yfinance 的请求限制
-    4. 静默重试 - 遇到限流时自动等待后重试
+    Legacy 美股数据管理器。
+
+    注意：
+    - 该类已从主 API / 回测 / 数据同步运行链路退役。
+    - 新功能应改用 `MarketDataManager(market="US")` 与通用 Market* 表。
+    - 当前仅作为旧 US 表迁移与兼容层保留。
     """
+
 
     def __init__(self, request_delay: float = LazyDownloadConfig.BASE_DELAY, history_years: int = 10):
         self.source = USStockSource()
@@ -490,8 +501,9 @@ class DataManager:
 
 
 # ============================================================
-# CLI
+# Legacy CLI（仅保留给旧表迁移/人工排障）
 # ============================================================
+
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

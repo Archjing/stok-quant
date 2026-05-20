@@ -1,23 +1,19 @@
 """
 数据同步 API - 触发批量下载 / 增量更新 / 查看状态。
-默认 market=US 保持原美股行为；CN/HK 走 MarketDataManager。
+US/CN/HK 统一走 MarketDataManager。
 """
 import logging
 import threading
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.data_manager import DataManager
 from backend.market_data_manager import MarketDataManager
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
 
 router = APIRouter(prefix="/api/data", tags=["Data Sync"])
 logger = logging.getLogger(__name__)
 
-_manager = DataManager(request_delay=0.6)
 _market_manager = MarketDataManager(request_delay=0.6)
-_sync_lock = threading.Lock()
-_sync_running = False
-_market_sync_running: dict[str, bool] = {"CN": False, "HK": False}
+_market_sync_running: dict[str, bool] = {"US": False, "CN": False, "HK": False}
 _market_backfill_running: dict[str, bool] = {"CN": False, "HK": False}
 
 
@@ -43,18 +39,11 @@ def _parse_symbols(symbols: str | None, market: str) -> list[str] | None:
 def sync_status(market: str = Query("US", description="市场: US|CN|HK")):
     """查看各股票数据同步状态"""
     market_code = _api_market(market)
-    if market_code != "US":
-        return {
-            "market": market_code,
-            "currency": get_currency(market_code),
-            "running": _market_sync_running.get(market_code, False),
-            "stocks": _market_manager.get_sync_summary(market_code),
-        }
     return {
-        "market": "US",
-        "currency": "USD",
-        "running": _sync_running,
-        "stocks": _manager.get_sync_summary(),
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "running": _market_sync_running.get(market_code, False),
+        "stocks": _market_manager.get_sync_summary(market_code),
     }
 
 
@@ -67,42 +56,25 @@ def trigger_download(
     """触发历史数据下载（后台异步执行）"""
     market_code = _api_market(market)
 
-    if market_code != "US":
-        global _market_sync_running
-        if _market_sync_running.get(market_code, False):
-            raise HTTPException(400, f"{market_code} 同步任务正在进行中")
-        target_symbols = _parse_symbols(symbols, market_code)
-        _market_sync_running[market_code] = True
+    if _market_sync_running.get(market_code, False):
+        raise HTTPException(400, f"{market_code} 同步任务正在进行中")
+    target_symbols = _parse_symbols(symbols, market_code)
+    _market_sync_running[market_code] = True
 
-        def _run_market():
-            try:
-                _market_manager.download_all(market_code, symbols=target_symbols, years=years)
-            finally:
-                _market_sync_running[market_code] = False
-
-        threading.Thread(target=_run_market, daemon=True).start()
-        return {
-            "market": market_code,
-            "currency": get_currency(market_code),
-            "message": f"{market_code} 下载已启动",
-            "symbols": target_symbols or "market_stock_pool",
-            "years": years or _market_manager.history_years,
-        }
-
-    global _sync_running
-    if _sync_running:
-        raise HTTPException(400, "同步任务正在进行中")
-    _sync_running = True
-
-    def _run():
-        global _sync_running
+    def _run_market():
         try:
-            _manager.download_all()
+            _market_manager.download_all(market_code, symbols=target_symbols, years=years)
         finally:
-            _sync_running = False
+            _market_sync_running[market_code] = False
 
-    threading.Thread(target=_run, daemon=True).start()
-    return {"market": "US", "currency": "USD", "message": "全量下载已启动", "stocks": 81, "years": _manager.history_years}
+    threading.Thread(target=_run_market, daemon=True).start()
+    return {
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "message": f"{market_code} 下载已启动",
+        "symbols": target_symbols or "market_stock_pool",
+        "years": years or _market_manager.history_years,
+    }
 
 
 @router.post("/update")
@@ -113,40 +85,24 @@ def trigger_update(
     """触发增量更新（后台异步执行）"""
     market_code = _api_market(market)
 
-    if market_code != "US":
-        if _market_sync_running.get(market_code, False):
-            raise HTTPException(400, f"{market_code} 同步任务正在进行中")
-        target_symbols = _parse_symbols(symbols, market_code)
-        _market_sync_running[market_code] = True
+    if _market_sync_running.get(market_code, False):
+        raise HTTPException(400, f"{market_code} 同步任务正在进行中")
+    target_symbols = _parse_symbols(symbols, market_code)
+    _market_sync_running[market_code] = True
 
-        def _run_market():
-            try:
-                _market_manager.incremental_update(market_code, symbols=target_symbols)
-            finally:
-                _market_sync_running[market_code] = False
-
-        threading.Thread(target=_run_market, daemon=True).start()
-        return {
-            "market": market_code,
-            "currency": get_currency(market_code),
-            "message": f"{market_code} 增量更新已启动",
-            "symbols": target_symbols or "market_stock_pool",
-        }
-
-    global _sync_running
-    if _sync_running:
-        raise HTTPException(400, "同步任务正在进行中")
-    _sync_running = True
-
-    def _run():
-        global _sync_running
+    def _run_market():
         try:
-            _manager.incremental_update()
+            _market_manager.incremental_update(market_code, symbols=target_symbols)
         finally:
-            _sync_running = False
+            _market_sync_running[market_code] = False
 
-    threading.Thread(target=_run, daemon=True).start()
-    return {"market": "US", "currency": "USD", "message": "增量更新已启动"}
+    threading.Thread(target=_run_market, daemon=True).start()
+    return {
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "message": f"{market_code} 增量更新已启动",
+        "symbols": target_symbols or "market_stock_pool",
+    }
 
 
 @router.post("/refresh-prices")
@@ -154,11 +110,8 @@ def refresh_prices(market: str = Query("US", description="市场: US|CN|HK")):
     """立即刷新所有股票实时价格"""
     market_code = _api_market(market)
     try:
-        if market_code != "US":
-            count = _market_manager.refresh_stock_prices(market_code)
-            return {"market": market_code, "currency": get_currency(market_code), "message": "价格已刷新", "count": count}
-        count = _manager.refresh_stock_prices()
-        return {"market": "US", "currency": "USD", "message": "价格已刷新", "count": count}
+        count = _market_manager.refresh_stock_prices(market_code)
+        return {"market": market_code, "currency": get_currency(market_code), "message": "价格已刷新", "count": count}
     except Exception as e:
         raise HTTPException(500, f"刷新失败: {e}")
 

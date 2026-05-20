@@ -1,16 +1,13 @@
 """
-回测 API - 懒人版
-优先从数据库读取，数据库没有时自动触发懒人下载。
-默认 market=US 保持原美股行为；CN/HK 走 MarketDataManager。
+回测 API - 多市场通用版
+优先从通用表读取，数据库没有时自动触发按市场懒人下载。
 """
+
 import logging
-from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException
 
-from backend.crawlers.us_stock_source import USStockSource
-from backend.crawlers.data_cleaner import USDataCleaner
-from backend.data_manager import DataManager
 from backend.market_data_manager import MarketDataManager
+
 from backend.markets.symbols import get_currency, normalize_market, normalize_symbol
 from backend.backtest.engine import BacktestEngine
 from backend.backtest.market_config import get_market_backtest_config
@@ -25,9 +22,8 @@ from backend.backtest.strategies import (
 
 router = APIRouter(prefix="/api/backtest", tags=["Backtest"])
 logger = logging.getLogger(__name__)
-data_source = USStockSource()
-data_mgr = DataManager()
 market_mgr = MarketDataManager()
+
 
 
 # 策略注册表
@@ -62,51 +58,33 @@ def _api_market(market: str) -> str:
 
 def _get_backtest_data(symbol: str, years: int, market: str = "US") -> tuple:
     """
-    获取回测数据 - 懒人策略。
+    获取回测数据 - 优先使用通用表。 
 
     Returns:
         (df: DataFrame, source: str, error: str or None, normalized_symbol: str)
     """
     market_code = _api_market(market)
-    if market_code != "US":
-        normalized = normalize_symbol(symbol, market_code)
+    normalized = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
+
+    db_rows = market_mgr.get_daily_from_db(market_code, normalized, years=years)
+    if db_rows:
+        logger.info(f"{market_code}/{normalized} ✓ 使用数据库缓存 ({len(db_rows)} 行)")
+        return market_mgr.rows_to_dataframe(db_rows), "database", None, normalized
+
+    logger.info(f"{market_code}/{normalized} 数据库暂无此股票，触发懒人下载...")
+    success, rows, err = market_mgr.lazy_download_one(market_code, normalized, years=years)
+    if success:
         db_rows = market_mgr.get_daily_from_db(market_code, normalized, years=years)
         if db_rows:
-            logger.info(f"{market_code}/{normalized} ✓ 使用数据库缓存 ({len(db_rows)} 行)")
-            return market_mgr.rows_to_dataframe(db_rows), "database", None, normalized
+            logger.info(f"{market_code}/{normalized} ✓ 懒人下载成功 ({rows} 行)")
+            return market_mgr.rows_to_dataframe(db_rows), "downloaded", None, normalized
 
-        logger.info(f"{market_code}/{normalized} 数据库暂无此股票，触发懒人下载...")
-        success, rows, err = market_mgr.lazy_download_one(market_code, normalized, years=years)
-        if success:
-            db_rows = market_mgr.get_daily_from_db(market_code, normalized, years=years)
-            if db_rows:
-                logger.info(f"{market_code}/{normalized} ✓ 懒人下载成功 ({rows} 行)")
-                return market_mgr.rows_to_dataframe(db_rows), "downloaded", None, normalized
-        raise HTTPException(404, f"{market_code}/{normalized} 无历史数据: {err or '下载失败'}")
-
-    symbol = symbol.upper()
-
-    db_rows = data_mgr.get_daily_from_db(symbol, years=years)
-    if db_rows:
-        logger.info(f"{symbol} ✓ 使用数据库缓存 ({len(db_rows)} 行)")
-        df = USDataCleaner.clean_daily_data_from_db_rows(db_rows)
-        return df, "database", None, symbol
-
-    logger.info(f"{symbol} 数据库暂无此股票，触发懒人下载...")
-    success, rows, err = data_mgr.lazy_download_one(symbol, years=years)
-
-    if success:
-        db_rows = data_mgr.get_daily_from_db(symbol, years=years)
-        if db_rows:
-            logger.info(f"{symbol} ✓ 懒人下载成功 ({rows} 行)")
-            df = USDataCleaner.clean_daily_data_from_db_rows(db_rows)
-            return df, "downloaded", None, symbol
-
-    if err and err.startswith("rate_limited_wait:"):
+    if err and isinstance(err, str) and err.startswith("rate_limited_wait:"):
         remaining = err.split(":")[1]
-        raise HTTPException(429, f"{symbol} 数据正在下载中，请 {remaining} 秒后再试")
+        raise HTTPException(429, f"{normalized} 数据正在下载中，请 {remaining} 秒后再试")
 
-    raise HTTPException(404, f"{symbol} 无历史数据: {err or '下载失败'}")
+    raise HTTPException(404, f"{market_code}/{normalized} 无历史数据: {err or '下载失败'}")
+
 
 
 @router.get("/market-rules")
@@ -122,7 +100,6 @@ def get_market_rules(market: str = Query("US", description="市场: US|CN|HK")):
 
 
 @router.post("/run")
-
 def run_backtest(
     symbol: str = Query("AAPL", description="股票代码"),
     strategy: str = Query("sma_crossover", description="策略ID"),
@@ -157,10 +134,9 @@ def run_backtest(
         "market": market_code,
         "currency": get_currency(market_code),
         "symbol": normalized_symbol,
-                "data_source": data_source_type,
+        "data_source": data_source_type,
         "market_rules": market_rules.to_dict(),
         "start_date": result.start_time,
-
         "end_date": result.end_time,
         "total_bars": result.total_bars,
         "results": {
@@ -187,6 +163,8 @@ def run_backtest(
         ],
         "error_message": result.error_message,
     }
+
+
 
 
 @router.post("/compare")
@@ -222,7 +200,7 @@ def compare_strategies(
             "equity_curve": result.equity_curve[:100],
         }
 
-        return {
+    return {
         "market": market_code,
         "currency": get_currency(market_code),
         "symbol": normalized_symbol,
@@ -233,55 +211,21 @@ def compare_strategies(
 
 
 
+
+
+
 @router.get("/status/{symbol}")
 def get_data_status(symbol: str, market: str = Query("US", description="市场: US|CN|HK")):
     """获取股票数据状态"""
     market_code = _api_market(market)
-    if market_code != "US":
-        normalized = normalize_symbol(symbol, market_code)
-        db_rows = market_mgr.get_daily_from_db(market_code, normalized, years=10)
-        if db_rows:
-            return {
-                "market": market_code,
-                "currency": get_currency(market_code),
-                "symbol": normalized,
-                "status": "available",
-                "rows": len(db_rows),
-                "start_date": str(db_rows[0].date) if db_rows else None,
-                "end_date": str(db_rows[-1].date) if db_rows else None,
-                "source": "database",
-            }
+    normalized = normalize_symbol(symbol, market_code) if market_code != "US" else symbol.upper()
+    db_rows = market_mgr.get_daily_from_db(market_code, normalized, years=10)
 
-        summaries = market_mgr.get_sync_summary(market_code)
-        sync = next((item for item in summaries if item["symbol"] == normalized), None)
-        if sync and sync.get("status") == "syncing":
-            return {"market": market_code, "symbol": normalized, "status": "syncing", "source": "akshare"}
-        if sync and sync.get("status") == "error":
-            return {
-                "market": market_code,
-                "symbol": normalized,
-                "status": "error",
-                "source": "akshare",
-                "error": sync.get("error"),
-            }
+    if db_rows:
         return {
             "market": market_code,
             "currency": get_currency(market_code),
             "symbol": normalized,
-            "status": "missing",
-            "rows": 0,
-            "source": "none",
-            "hint": "调用 /api/backtest/run 时会自动下载",
-        }
-
-    symbol = symbol.upper()
-    db_rows = data_mgr.get_daily_from_db(symbol, years=10)
-
-    if db_rows:
-        return {
-            "market": "US",
-            "currency": "USD",
-            "symbol": symbol,
             "status": "available",
             "rows": len(db_rows),
             "start_date": str(db_rows[0].date) if db_rows else None,
@@ -289,37 +233,35 @@ def get_data_status(symbol: str, market: str = Query("US", description="市场: 
             "source": "database",
         }
 
-    from backend.database import SessionLocal
-    from backend.data_manager import DataSyncStatus
-
-    session = SessionLocal()
-    try:
-        sync = session.query(DataSyncStatus).filter_by(symbol=symbol).first()
-        if sync:
-            if sync.status == "rate_limited":
-                wait_time = (datetime.now() - sync.last_sync_time).total_seconds()
-                return {
-                    "market": "US",
-                    "currency": "USD",
-                    "symbol": symbol,
-                    "status": "rate_limited",
-                    "wait_seconds": int(300 - wait_time) if wait_time < 300 else 0,
-                    "source": "yfinance",
-                }
-            if sync.status == "syncing":
-                return {"market": "US", "currency": "USD", "symbol": symbol, "status": "syncing", "source": "yfinance"}
-    finally:
-        session.close()
-
+    summaries = market_mgr.get_sync_summary(market_code)
+    sync = next((item for item in summaries if item["symbol"] == normalized), None)
+    if sync and sync.get("status") == "syncing":
+        return {
+            "market": market_code,
+            "currency": get_currency(market_code),
+            "symbol": normalized,
+            "status": "syncing",
+            "source": "database",
+        }
+    if sync and sync.get("status") == "error":
+        return {
+            "market": market_code,
+            "currency": get_currency(market_code),
+            "symbol": normalized,
+            "status": "error",
+            "source": "database",
+            "error": sync.get("error"),
+        }
     return {
-        "market": "US",
-        "currency": "USD",
-        "symbol": symbol,
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "symbol": normalized,
         "status": "missing",
         "rows": 0,
         "source": "none",
         "hint": "调用 /api/backtest/run 时会自动下载",
     }
+
 
 
 @router.post("/warmup")
@@ -329,55 +271,28 @@ def warmup_data(
 ):
     """预热数据 - 下载指定股票"""
     market_code = _api_market(market)
-    if market_code != "US":
+    if market_code == "US":
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    else:
         symbol_list = [normalize_symbol(s.strip(), market_code) for s in symbols.split(",") if s.strip()]
-        results = {"submitted": [], "already_has": [], "failed": []}
-        for sym in symbol_list[:20]:
-            db_rows = market_mgr.get_daily_from_db(market_code, sym, years=5)
-            if db_rows:
-                results["already_has"].append(sym)
-                continue
-            ok, _, err = market_mgr.lazy_download_one(market_code, sym)
-            if ok:
-                results["submitted"].append(sym)
-            else:
-                results["failed"].append({"symbol": sym, "error": err})
-        return {
-            "market": market_code,
-            "currency": get_currency(market_code),
-            "message": "预热请求已处理",
-            **results,
-        }
 
-    symbol_list = [s.strip().upper() for s in symbols.split(",")]
-    results = {"submitted": [], "already_has": [], "rate_limited": []}
-
+    results = {"submitted": [], "already_has": [], "failed": []}
     for sym in symbol_list[:20]:
-        db_rows = data_mgr.get_daily_from_db(sym, years=5)
+        db_rows = market_mgr.get_daily_from_db(market_code, sym, years=5)
         if db_rows:
             results["already_has"].append(sym)
+            continue
+        ok, _, err = market_mgr.lazy_download_one(market_code, sym)
+        if ok:
+            results["submitted"].append(sym)
         else:
-            from backend.database import SessionLocal
-            from backend.data_manager import DataSyncStatus
-
-            session = SessionLocal()
-            try:
-                sync = session.query(DataSyncStatus).filter_by(symbol=sym).first()
-                if sync and sync.status == "rate_limited":
-                    results["rate_limited"].append(sym)
-                else:
-                    results["submitted"].append(sym)
-                    data_mgr.lazy_download_one(sym)
-            finally:
-                session.close()
+            results["failed"].append({"symbol": sym, "error": err})
 
     return {
-        "market": "US",
-        "currency": "USD",
-        "message": "预热请求已提交",
-        "submitted": results["submitted"],
-        "already_has": results["already_has"],
-        "rate_limited": results["rate_limited"],
-        "note": "数据将在后台下载，首次回测可能需要等待",
+        "market": market_code,
+        "currency": get_currency(market_code),
+        "message": "预热请求已处理",
+        **results,
     }
+
 
