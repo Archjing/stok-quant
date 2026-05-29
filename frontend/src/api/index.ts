@@ -46,3 +46,14 @@ export const runBacktest = (params: any) =>
   http.post("/api/backtest/run", null, { params });
 export const compareStrategies = (params: any) =>
   http.post("/api/backtest/compare", null, { params });
+
+export const getDataSyncStatus = (params?: any) =>
+  http.get("/api/data/status", { params });
+export const triggerDataDownload = (params?: any) =>
+  http.post("/api/data/download", null, { params });
+export const triggerDataUpdate = (params?: any) =>
+  http.post("/api/data/update", null, { params });
+export const refreshMarketPrices = (params?: any) =>
+  http.post("/api/data/refresh-prices", null, { params });
+export const refreshStockList = (params?: any) =>
+  http.post("/api/data/refresh-symbols", null, { params });

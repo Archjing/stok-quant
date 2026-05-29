@@ -47,9 +47,10 @@ class MarketDataManager:
     # 股票列表
     # ==========================================================
     def get_stock_list(self, market: str) -> list[dict[str, Any]]:
-        """获取市场股票列表，优先读取 DB，无缓存时从数据源或静态样本种子化。"""
+        """获取市场股票列表，优先读取 DB，并按需同步数据源市场池。"""
         market_code = self._normalize_market(market)
         self._ensure_stocks_seeded(market_code)
+        self._refresh_stock_list_if_needed(market_code)
         return self._read_stock_list_from_db(market_code)
 
     def _ensure_stocks_seeded(self, market: str) -> None:
@@ -104,6 +105,96 @@ class MarketDataManager:
         try:
             rows = session.query(MarketStock).filter_by(market=market).order_by(MarketStock.symbol).all()
             return [self._stock_to_dict(row) for row in rows]
+        finally:
+            session.close()
+
+    def _count_stock_list(self, market: str) -> int:
+        session = SessionLocal()
+        try:
+            return session.query(MarketStock).filter_by(market=market).count()
+        finally:
+            session.close()
+
+    def _get_stock_list_symbols(self, market: str) -> set[str]:
+        session = SessionLocal()
+        try:
+            return {row[0] for row in session.query(MarketStock.symbol).filter_by(market=market).all()}
+        finally:
+            session.close()
+
+    def _fetch_stock_list_from_source(self, market: str) -> list[dict[str, Any]]:
+        if market == "US":
+            return self.us_source.get_stock_list()
+        source = get_market_source(market)
+        return source.get_stock_list()
+
+    def _refresh_stock_list_if_needed(self, market: str) -> None:
+        """按需从数据源同步最新市场股票池。"""
+        market_code = self._normalize_market(market)
+        source_stocks = self._fetch_stock_list_from_source(market_code)
+        if not source_stocks:
+            return
+
+        source_symbols = {item.get("symbol") for item in source_stocks if item.get("symbol")}
+        if not source_symbols:
+            return
+
+        db_count = self._count_stock_list(market_code)
+        db_symbols = self._get_stock_list_symbols(market_code)
+        if len(source_symbols) > db_count or not source_symbols.issubset(db_symbols):
+            self.refresh_stock_list(market_code, force=True)
+
+    def refresh_stock_list(self, market: str, force: bool = False) -> dict[str, Any]:
+        """从数据源刷新市场股票池，并将新增或更新的股票写入 DB。"""
+        market_code = self._normalize_market(market)
+        source_stocks = self._fetch_stock_list_from_source(market_code)
+        if not source_stocks:
+            return {
+                "market": market_code,
+                "updated": 0,
+                "message": "no source stocks",
+            }
+
+        source_symbols = [item.get("symbol") for item in source_stocks if item.get("symbol")]
+        if not source_symbols:
+            return {
+                "market": market_code,
+                "updated": 0,
+                "message": "no valid symbols in source",
+            }
+
+        session = SessionLocal()
+        try:
+            updated = 0
+            for item in source_stocks:
+                stock = MarketStock(
+                    market=market_code,
+                    symbol=item.get("symbol"),
+                    raw_symbol=item.get("raw_symbol"),
+                    name=item.get("name") or item.get("symbol"),
+                    exchange=item.get("exchange"),
+                    board=item.get("board"),
+                    sector=item.get("sector"),
+                    industry=item.get("industry"),
+                    area=item.get("area"),
+                    country=item.get("country"),
+                    currency=item.get("currency") or get_currency(market_code),
+                    price=self._f_value(item.get("price")),
+                    change_pct=self._f_value(item.get("change_pct")),
+                    market_cap=self._f_value(item.get("market_cap")),
+                    pe_ratio=self._f_value(item.get("pe_ratio")),
+                    pb_ratio=self._f_value(item.get("pb_ratio")),
+                    dividend_yield=self._f_value(item.get("dividend_yield")),
+                    turnover_rate=self._f_value(item.get("turnover_rate")),
+                )
+                self._upsert_stock(session, stock)
+                updated += 1
+            session.commit()
+            return {
+                "market": market_code,
+                "updated": updated,
+                "message": f"{market_code} stock list refreshed",
+            }
         finally:
             session.close()
 

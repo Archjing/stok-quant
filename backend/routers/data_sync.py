@@ -116,6 +116,22 @@ def refresh_prices(market: str = Query("US", description="市场: US|CN|HK")):
         raise HTTPException(500, f"刷新失败: {e}")
 
 
+@router.post("/refresh-symbols")
+def refresh_stock_list(market: str = Query("US", description="市场: US|CN|HK")):
+    """刷新市场股票列表，使其与数据源股票池保持一致。"""
+    market_code = _api_market(market)
+    try:
+        result = _market_manager.refresh_stock_list(market_code)
+        return {
+            "market": market_code,
+            "currency": get_currency(market_code),
+            "message": result.get("message", "股票列表已刷新"),
+            "updated": result.get("updated", 0),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"刷新股票列表失败: {e}")
+
+
 @router.post("/backfill-indicators")
 def trigger_backfill_indicators(
     market: str = Query("CN", description="市场: CN|HK"),

@@ -1,7 +1,7 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, TrendingUp, Search, Activity, LineChart, FlaskConical, Github, Globe, Loader2 } from 'lucide-react'
+import { BarChart3, TrendingUp, Search, Activity, LineChart, FlaskConical, Github, Globe, Loader2, Database } from 'lucide-react'
 
 // 路由懒加载
 const Dashboard = lazy(() => import('./views/Dashboard'))
@@ -9,6 +9,7 @@ const StockList = lazy(() => import('./views/StockList'))
 const BacktestView = lazy(() => import('./views/BacktestView'))
 const StrategyView = lazy(() => import('./views/StrategyView'))
 const AnalysisView = lazy(() => import('./views/AnalysisView'))
+const DataSyncView = lazy(() => import('./views/DataSyncView'))
 
 // 懒加载骨架屏
 const PageLoader = () => (
@@ -36,6 +37,7 @@ function App() {
     { path: '/', label: t('nav.dashboard'), icon: BarChart3 },
     { path: '/stocks', label: t('nav.stocks'), icon: Search },
     { path: '/backtest', label: t('nav.backtest'), icon: TrendingUp },
+    { path: '/data-sync', label: t('nav.dataSync'), icon: Database },
     { path: '/strategies', label: t('nav.strategies'), icon: FlaskConical },
     { path: '/analysis', label: t('nav.analysis'), icon: Activity },
   ]
@@ -95,8 +97,9 @@ function App() {
             <Route path="/" element={<Suspense fallback={<PageLoader />}><Dashboard /></Suspense>} />
             <Route path="/stocks" element={<Suspense fallback={<PageLoader />}><StockList /></Suspense>} />
             <Route path="/backtest" element={<Suspense fallback={<PageLoader />}><BacktestView /></Suspense>} />
-            <Route path="/strategies" element={<Suspense fallback={<PageLoader />}><StrategyView /></Suspense>} />
-            <Route path="/analysis" element={<Suspense fallback={<PageLoader />}><AnalysisView /></Suspense>} />
+          <Route path="/data-sync" element={<Suspense fallback={<PageLoader />}><DataSyncView /></Suspense>} />
+          <Route path="/strategies" element={<Suspense fallback={<PageLoader />}><StrategyView /></Suspense>} />
+          <Route path="/analysis" element={<Suspense fallback={<PageLoader />}><AnalysisView /></Suspense>} />
           </Routes>
         </div>
       </main>
